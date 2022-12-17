@@ -6,6 +6,7 @@ description = "Poseidon hash implementation in Rust"
 repository = "https://github.com/Lightprotocol/light-poseidon"
 readme = "README.md"
 keywords = ["cryptography", "hash", "poseidon", "zero-knowledge", "zkSNARK"]
+license = "Apache-2.0"
 edition = "2021"
 
 [dependencies]

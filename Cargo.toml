@@ -1,0 +1,16 @@
+[package]
+name = "light-poseidon"
+version = "0.0.1"
+authors = ["Michal Rostecki <vadorovsky@gmail.com>"]
+description = "Poseidon hash implementation in Rust"
+repository = "https://github.com/Lightprotocol/light-poseidon"
+readme = "README.md"
+keywords = ["cryptography", "hash", "poseidon", "zero-knowledge", "zkSNARK"]
+edition = "2021"
+
+[dependencies]
+ark-bn254 = "0.3.0"
+ark-ff = "0.3.0"
+
+[badges]
+github = { repository = "Lightprotocol/light-poseidon" }

@@ -1,5 +1,5 @@
 [![Crates.io](https://img.shields.io/crates/v/light-poseidon.svg)](https://crates.io/crates/light-poseidon)
-[![Workflow Status](https://github.com/Lightprotocol/light-poseidon/workflows/main/badge.svg)](https://github.com/Lightprotocol/light-poseidon/actions?query=workflow%3A%22main%22)
+[![Workflow Status](https://github.com/Lightprotocol/light-poseidon/workflows/main/badge.svg)](https://github.com/Lightprotocol/light-poseidon/actions?query=workflow)
 
 # light-poseidon
 
@@ -34,7 +34,7 @@ let mut poseidon = PoseidonHasher::new(params);
 let input1 = Fq::from_be_bytes_mod_order(&[1u8; 32]);
 let input2 = Fq::from_be_bytes_mod_order(&[2u8; 32]);
 
-let hash = poseidon.hash(&[input1, input2]);
+let hash = poseidon.hash(&[input1, input2]).unwrap();
 
 // Do something with `hash`.
 println!("{:?}", hash.into_repr().to_bytes_be());

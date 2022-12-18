@@ -230,7 +230,9 @@ impl<F: PrimeField> PoseidonHasher<F> {
             self.apply_mds();
         }
 
-        Ok(self.state[0])
+        let result = self.state[0];
+        self.state.clear();
+        Ok(result)
     }
 }
 

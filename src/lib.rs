@@ -48,6 +48,29 @@
 //!
 //! * [circomlibjs](https://github.com/iden3/circomlibjs)
 //! * [zero-knowledge-gadgets](https://github.com/webb-tools/zero-knowledge-gadgets)
+//!
+//! ## Performance
+//!
+//! This repository contains a benchmark measuring the performance of this
+//! Poseidon implementation for given two random 32 bytes inputs.
+//!
+//! To run them, simply use:
+//!
+//! ```bash
+//! cargo bench
+//! ```
+//!
+//! This is the result from a host with the following hardware:
+//!
+//! * AMD Ryzen 9 5950x (base clock: 3.4 GHz, up to: 4.9 GHz)
+//! * 4 x Corsair Vengeance DDR4 32GB 3600 MHz
+//!
+//! ```norust
+//! poseidon_bn253_x5_3     time:   [21.980 µs 21.997 µs 22.017 µs]
+//! Found 9 outliers among 100 measurements (9.00%)
+//!   4 (4.00%) high mild
+//!   5 (5.00%) high severe
+//! ```
 
 use ark_ff::PrimeField;
 use thiserror::Error;

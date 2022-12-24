@@ -71,7 +71,7 @@ This is the result from a host with the following hardware:
 * 4 x Corsair Vengeance DDR4 32GB 3600 MHz
 
 ```norust
-poseidon_bn253_x5_3     time:   [21.980 µs 21.997 µs 22.017 µs]
+poseidon_bn254_x5_3     time:   [21.980 µs 21.997 µs 22.017 µs]
 Found 9 outliers among 100 measurements (9.00%)
   4 (4.00%) high mild
   5 (5.00%) high severe

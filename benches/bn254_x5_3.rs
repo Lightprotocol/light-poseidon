@@ -14,7 +14,7 @@ pub fn bench_poseidon_bn254_x5_3(c: &mut Criterion) {
     let input1 = Fq::from_be_bytes_mod_order(&random_bytes1);
     let input2 = Fq::from_be_bytes_mod_order(&random_bytes2);
 
-    c.bench_function("poseidon_bn253_x5_3", |b| {
+    c.bench_function("poseidon_bn254_x5_3", |b| {
         b.iter(|| poseidon.hash(&[input1, input2]))
     });
 }

@@ -18,18 +18,55 @@ Parameters provided by the library are:
 * 3 prime fields (one zero prime field and two inputs from the caller)
 * 8 full rounds and 57 partial rounds
 
+## Output type
+
+[`Poseidon`](crate::Poseidon) type implements two traits which serve the purpose
+of returning the calculated hash in different representations:
+
+* [`PoseidonBytesHasher`](crate::PoseidonBytesHasher) with the
+  [`hash_bytes`](crate::PoseidonBytesHasher::hash_bytes) method which
+  returns a byte array.
+* [`PoseidonHasher`](crate::PoseidonHasher) with the
+  [`hash`](crate::PoseidonHasher::hash) method which returns
+  [`ark_ff::PrimeField`](ark_ff::PrimeField). Might be useful if you want
+  to immediately process the result with an another library which works with
+  [`ark_ff::PrimeField`](ark_ff::PrimeField) types.
+
 ## Examples
 
 Example with two simple big-endian byte inputs (converted to prime fields)
-and BN254-based parameters provided by the library:
+and BN254-based parameters provided by the library, with
+[`PoseidonBytesHasher`](crate::PoseidonHasher) trait and a byte array
+result:
 
 ```rust
-use light_poseidon::{PoseidonHasher, parameters::bn254_x5_3::poseidon_parameters};
+use light_poseidon::{Poseidon, PoseidonBytesHasher, parameters::bn254_x5_3::poseidon_parameters};
 use ark_bn254::Fq;
 use ark_ff::{BigInteger, PrimeField};
 
 let params = poseidon_parameters();
-let mut poseidon = PoseidonHasher::new(params);
+let mut poseidon = Poseidon::new(params);
+
+let hash = poseidon.hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
+
+println!("{:?}", hash);
+// Should print:
+// [
+//     40, 7, 251, 60, 51, 30, 115, 141, 251, 200, 13, 46, 134, 91, 113, 170, 131, 90, 53,
+//     175, 9, 61, 242, 164, 127, 33, 249, 65, 253, 131, 35, 116
+// ]
+```
+
+With [`PoseidonHasher`][crate::PoseidonHasher] trait and
+[`ark_ff::PrimeField`](ark_ff::PrimeField) result:
+
+```rust
+use light_poseidon::{Poseidon, PoseidonHasher, parameters::bn254_x5_3::poseidon_parameters};
+use ark_bn254::Fq;
+use ark_ff::{BigInteger, PrimeField};
+
+let params = poseidon_parameters();
+let mut poseidon = Poseidon::new(params);
 
 let input1 = Fq::from_be_bytes_mod_order(&[1u8; 32]);
 let input2 = Fq::from_be_bytes_mod_order(&[2u8; 32]);
@@ -37,12 +74,6 @@ let input2 = Fq::from_be_bytes_mod_order(&[2u8; 32]);
 let hash = poseidon.hash(&[input1, input2]).unwrap();
 
 // Do something with `hash`.
-println!("{:?}", hash.into_repr().to_bytes_be());
-// Should print:
-// [
-//     40, 7, 251, 60, 51, 30, 115, 141, 251, 200, 13, 46, 134, 91, 113, 170, 131, 90, 53,
-//     175, 9, 61, 242, 164, 127, 33, 249, 65, 253, 131, 35, 116
-// ]
 ```
 
 ## Implementation

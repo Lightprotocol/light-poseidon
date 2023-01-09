@@ -3,11 +3,11 @@ use ark_ff::PrimeField;
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::Rng;
 
-use light_poseidon::{parameters::bn254_x5_3, PoseidonHasher};
+use light_poseidon::{parameters::bn254_x5_3, Poseidon};
 
 pub fn bench_poseidon_bn254_x5_3(c: &mut Criterion) {
     let params = bn254_x5_3::poseidon_parameters();
-    let mut poseidon = PoseidonHasher::new(params);
+    let mut poseidon = Poseidon::new(params);
 
     let random_bytes1 = rand::thread_rng().gen::<[u8; 32]>();
     let random_bytes2 = rand::thread_rng().gen::<[u8; 32]>();

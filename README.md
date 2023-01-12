@@ -44,7 +44,7 @@ use light_poseidon::{Poseidon, PoseidonBytesHasher, parameters::bn254_x5_3::pose
 use ark_bn254::Fq;
 use ark_ff::{BigInteger, PrimeField};
 
-let params = poseidon_parameters();
+let params = poseidon_parameters!(Fq);
 let mut poseidon = Poseidon::new(params);
 
 let hash = poseidon.hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
@@ -65,7 +65,7 @@ use light_poseidon::{Poseidon, PoseidonHasher, parameters::bn254_x5_3::poseidon_
 use ark_bn254::Fq;
 use ark_ff::{BigInteger, PrimeField};
 
-let params = poseidon_parameters();
+let params = poseidon_parameters!(Fq);
 let mut poseidon = Poseidon::new(params);
 
 let input1 = Fq::from_be_bytes_mod_order(&[1u8; 32]);

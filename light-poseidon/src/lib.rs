@@ -374,7 +374,7 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
         }
 
         let all_rounds = self.params.full_rounds + self.params.partial_rounds;
-        let half_rounds = self.params.full_rounds / 2;
+        let half_rounds = self.params.full_rounds / 2; // iden3 has - 1 here
 
         // full rounds + partial rounds
         for round in 0..half_rounds {

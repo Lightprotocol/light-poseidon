@@ -36,10 +36,10 @@
 //!
 //! ```rust
 //! use light_poseidon::{Poseidon, PoseidonBytesHasher, parameters::bn254_x5_3::poseidon_parameters};
-//! use ark_bn254::Fq;
+//! use ark_bn254::Fr;
 //! use ark_ff::{BigInteger, PrimeField};
 //!
-//! let params = poseidon_parameters!(Fq);
+//! let params = poseidon_parameters!(Fr);
 //! let mut poseidon = Poseidon::new(params);
 //!
 //! let hash = poseidon.hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
@@ -47,8 +47,8 @@
 //! println!("{:?}", hash);
 //! // Should print:
 //! // [
-//! //     40, 7, 251, 60, 51, 30, 115, 141, 251, 200, 13, 46, 134, 91, 113, 170, 131, 90, 53,
-//! //     175, 9, 61, 242, 164, 127, 33, 249, 65, 253, 131, 35, 116
+//! //     13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123, 132,
+//! //     254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
 //! // ]
 //! ```
 //!
@@ -57,14 +57,14 @@
 //!
 //! ```rust
 //! use light_poseidon::{Poseidon, PoseidonHasher, parameters::bn254_x5_3::poseidon_parameters};
-//! use ark_bn254::Fq;
+//! use ark_bn254::Fr;
 //! use ark_ff::{BigInteger, PrimeField};
 //!
-//! let params = poseidon_parameters!(Fq);
+//! let params = poseidon_parameters!(Fr);
 //! let mut poseidon = Poseidon::new(params);
 //!
-//! let input1 = Fq::from_be_bytes_mod_order(&[1u8; 32]);
-//! let input2 = Fq::from_be_bytes_mod_order(&[2u8; 32]);
+//! let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
+//! let input2 = Fr::from_be_bytes_mod_order(&[2u8; 32]);
 //!
 //! let hash = poseidon.hash(&[input1, input2]).unwrap();
 //!
@@ -181,14 +181,14 @@ pub trait PoseidonHasher<F: PrimeField> {
     ///
     /// ```rust
     /// use light_poseidon::{Poseidon, PoseidonHasher, parameters::bn254_x5_3::poseidon_parameters};
-    /// use ark_bn254::Fq;
+    /// use ark_bn254::Fr;
     /// use ark_ff::{BigInteger, PrimeField};
     ///
-    /// let params = poseidon_parameters!(Fq);
+    /// let params = poseidon_parameters!(Fr);
     /// let mut poseidon = Poseidon::new(params);
     ///
-    /// let input1 = Fq::from_be_bytes_mod_order(&[1u8; 32]);
-    /// let input2 = Fq::from_be_bytes_mod_order(&[2u8; 32]);
+    /// let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
+    /// let input2 = Fr::from_be_bytes_mod_order(&[2u8; 32]);
     ///
     /// let hash = poseidon.hash(&[input1, input2]).unwrap();
     ///
@@ -218,10 +218,10 @@ pub trait PoseidonBytesHasher {
     ///
     /// ```rust
     /// use light_poseidon::{Poseidon, PoseidonBytesHasher, parameters::bn254_x5_3::poseidon_parameters};
-    /// use ark_bn254::Fq;
+    /// use ark_bn254::Fr;
     /// use ark_ff::{BigInteger, PrimeField};
     ///
-    /// let params = poseidon_parameters!(Fq);
+    /// let params = poseidon_parameters!(Fr);
     /// let mut poseidon = Poseidon::new(params);
     ///
     /// let hash = poseidon.hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
@@ -229,8 +229,8 @@ pub trait PoseidonBytesHasher {
     /// println!("{:?}", hash);
     /// // Should print:
     /// // [
-    /// //     40, 7, 251, 60, 51, 30, 115, 141, 251, 200, 13, 46, 134, 91, 113, 170, 131, 90, 53,
-    /// //     175, 9, 61, 242, 164, 127, 33, 249, 65, 253, 131, 35, 116
+    /// //     13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123, 132,
+    /// //     254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
     /// // ]
     /// ```
     fn hash_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError>;
@@ -308,8 +308,10 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
         }
 
         let all_rounds = self.params.full_rounds + self.params.partial_rounds;
-        let half_rounds = self.params.full_rounds / 2;
+        let half_rounds = self.params.full_rounds / 2; // iden3 has - 1 here
 
+        // full rounds + partial rounds
+        //
         for round in 0..half_rounds {
             self.apply_ark(round);
             self.apply_sbox_full();

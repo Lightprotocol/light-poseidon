@@ -39,7 +39,7 @@
 //! use ark_bn254::Fr;
 //! use ark_ff::{BigInteger, PrimeField};
 //!
-//! let params = poseidon_parameters!(Fr);
+//! let params = poseidon_parameters!(3);
 //! let mut poseidon = Poseidon::new(params);
 //!
 //! let hash = poseidon.hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
@@ -60,7 +60,7 @@
 //! use ark_bn254::Fr;
 //! use ark_ff::{BigInteger, PrimeField};
 //!
-//! let params = poseidon_parameters!(Fr);
+//! let params = poseidon_parameters!(3);
 //! let mut poseidon = Poseidon::new(params);
 //!
 //! let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
@@ -184,7 +184,7 @@ pub trait PoseidonHasher<F: PrimeField> {
     /// use ark_bn254::Fr;
     /// use ark_ff::{BigInteger, PrimeField};
     ///
-    /// let params = poseidon_parameters!(Fr);
+    /// let params = poseidon_parameters!(3);
     /// let mut poseidon = Poseidon::new(params);
     ///
     /// let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
@@ -221,7 +221,7 @@ pub trait PoseidonBytesHasher {
     /// use ark_bn254::Fr;
     /// use ark_ff::{BigInteger, PrimeField};
     ///
-    /// let params = poseidon_parameters!(Fr);
+    /// let params = poseidon_parameters!(3);
     /// let mut poseidon = Poseidon::new(params);
     ///
     /// let hash = poseidon.hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
@@ -290,6 +290,7 @@ impl<F: PrimeField> Poseidon<F> {
 
 impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
     fn hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError> {
+        
         if inputs.len() > self.params.width - 1 {
             return Err(PoseidonError::InvalidNumberOfInputs {
                 inputs: inputs.len(),

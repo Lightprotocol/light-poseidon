@@ -10,7 +10,7 @@ fn test_poseidon_bn254_x5_fq_input_ones_twos() {
     let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
     let input2 = Fr::from_be_bytes_mod_order(&[2u8; 32]);
 
-    let hash = poseidon.hash(&[input1, input2]).unwrap();
+    let hash = Poseidon::<Fr>::hash(&[input1, input2]).unwrap();
     assert_eq!(
         hash.into_repr().to_bytes_be(),
         [
@@ -28,7 +28,7 @@ fn test_poseidon_bn254_x5_fq_input_one_two() {
     let input1 = Fr::from_be_bytes_mod_order(&[1]);
     let input2 = Fr::from_be_bytes_mod_order(&[2]);
 
-    let hash = poseidon.hash(&[input1, input2]).unwrap();
+    let hash = Poseidon::<Fr>::hash(&[input1, input2]).unwrap();
 
     assert_eq!(
         hash.into_repr().to_bytes_le(),
@@ -55,7 +55,7 @@ fn test_poseidon_bn254_x5_fq_input_random() {
         0x30, 0x0b,
     ]);
 
-    let hash = poseidon.hash(&[input1, input2]).unwrap();
+    let hash = Poseidon::<Fr>::hash(&[input1, input2]).unwrap();
     assert_eq!(
         hash.into_repr().to_bytes_le(),
         [
@@ -67,26 +67,30 @@ fn test_poseidon_bn254_x5_fq_input_random() {
 
 #[test]
 fn test_poseidon_bn254_x5_fq_input_invalid() {
-    let params = bn254_x5::get_poseidon_parameters(3);
-    let mut poseidon = Poseidon::new(params);
+   
+    let mut vec = Vec::new();
+    for i in 0..17 {
+        vec.push(Fr::from_be_bytes_mod_order(&[1u8; 32]));
+    }
+    // let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
+    // let input2 = Fr::from_be_bytes_mod_order(&[2u8; 32]);
+    // let input3 = Fr::from_be_bytes_mod_order(&[3u8; 32]);
 
-    let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
-    let input2 = Fr::from_be_bytes_mod_order(&[2u8; 32]);
-    let input3 = Fr::from_be_bytes_mod_order(&[3u8; 32]);
+    assert!(Poseidon::<Fr>::hash(&vec).is_err());
 
-    assert!(poseidon.hash(&[input1, input2, input3]).is_err());
+    // let input4 = Fr::from_be_bytes_mod_order(&[4u8; 32]);
+    vec.push(Fr::from_be_bytes_mod_order(&[4u8; 32]));
 
-    let input4 = Fr::from_be_bytes_mod_order(&[4u8; 32]);
-
-    assert!(poseidon.hash(&[input1, input2, input3, input4]).is_err());
+    assert!(Poseidon::<Fr>::hash(&vec).is_err());
 }
-
+use ark_bn254::FrParameters;
+use ark_ff::Fp256;
 #[test]
 fn test_poseidon_bn254_x5_fq_hash_bytes() {
     let params = bn254_x5::get_poseidon_parameters(3);
     let mut poseidon = Poseidon::new(params);
 
-    let hash = poseidon.hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
+    let hash = Poseidon::<Fp256<FrParameters>>::hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
 
     assert_eq!(
         hash,
@@ -172,18 +176,18 @@ fn test_params_18() {
     let value = [vec![0u8; 31], vec![1u8]].concat();
     for i in 2..18 {
         inputs.push(value.as_slice());
-        let params = bn254_x5::get_poseidon_parameters(i as u8);
-        let mut poseidon = Poseidon::new(params);
-        let hash = poseidon.hash_bytes(&inputs[..]).unwrap();
+        // let params = bn254_x5::get_poseidon_parameters(i as u8);
+        // let mut poseidon = Poseidon::new(params);
+        let hash = Poseidon::<Fp256<FrParameters>>::hash_bytes(&inputs[..]).unwrap();
         assert_eq!(hash, TEST_CASES[i - 2]);
     }
     let mut inputs = Vec::new();
     let value = [vec![0u8; 31], vec![2u8]].concat();
     for i in 2..18 {
         inputs.push(value.as_slice());
-        let params = bn254_x5::get_poseidon_parameters(i as u8);
-        let mut poseidon = Poseidon::new(params);
-        let hash = poseidon.hash_bytes(&inputs[..]).unwrap();
+        // let params = bn254_x5::get_poseidon_parameters(i as u8);
+        // let mut poseidon = Poseidon::new(params);
+        let hash = Poseidon::<Fp256<FrParameters>>::hash_bytes(&inputs[..]).unwrap();
         assert!(hash != TEST_CASES[i - 2]);
     }
 }

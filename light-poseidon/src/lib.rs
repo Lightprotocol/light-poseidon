@@ -105,10 +105,13 @@
 
 use ark_ff::{BigInteger, PrimeField};
 use thiserror::Error;
+use ark_ff::Fp256;
+use ark_bn254::FrParameters;
 
 pub mod parameters;
 
 pub const HASH_LEN: usize = 32;
+pub const MAX_X5_LEN: usize = 16;
 
 #[derive(Error, Debug)]
 pub enum PoseidonError {
@@ -120,6 +123,8 @@ pub enum PoseidonError {
     },
     #[error("Failed to convert a vector of bytes into an array")]
     VecToArray,
+    #[error("Failed to convert a the number of inputs to a u8")]
+    U64Tou8,
 }
 
 /// Parameters for the Poseidon hash algorithm.
@@ -194,7 +199,8 @@ pub trait PoseidonHasher<F: PrimeField> {
     ///
     /// // Do something with `hash`.
     /// ```
-    fn hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError>;
+    fn hash( inputs: &[Fp256::<FrParameters>]) -> Result<Fp256::<FrParameters>, PoseidonError>;
+    fn _hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError>;
 }
 
 pub trait PoseidonBytesHasher {
@@ -233,7 +239,8 @@ pub trait PoseidonBytesHasher {
     /// //     254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
     /// // ]
     /// ```
-    fn hash_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError>;
+    fn _hash_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError>;
+    fn hash_bytes(inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError>;
 }
 
 /// A stateful sponge performing Poseidon hash computation.
@@ -289,7 +296,25 @@ impl<F: PrimeField> Poseidon<F> {
 }
 
 impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
-    fn hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError> {
+    fn hash(inputs: &[Fp256::<FrParameters>]) -> Result<Fp256::<FrParameters>, PoseidonError> {
+
+        if inputs.len() > MAX_X5_LEN {
+            return Err(PoseidonError::InvalidNumberOfInputs {
+                inputs: inputs.len(),
+                max_limit: MAX_X5_LEN,
+                width: MAX_X5_LEN,
+            });
+        }
+
+        let params = crate::parameters::bn254_x5::get_poseidon_parameters((inputs.len() + 1).try_into().map_err(|_| PoseidonError::U64Tou8)?);
+        let mut poseidon = Poseidon::new(params);
+
+        let hash = poseidon._hash(&inputs[..])?;
+
+        Ok(hash)
+    }
+
+    fn _hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError> {
         
         if inputs.len() > self.params.width - 1 {
             return Err(PoseidonError::InvalidNumberOfInputs {
@@ -338,12 +363,36 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
 }
 
 impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
-    fn hash_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
+    fn _hash_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
         let inputs: Vec<F> = inputs
             .iter()
             .map(|bytes| F::from_be_bytes_mod_order(bytes))
             .collect();
-        let hash = self.hash(&inputs)?;
+        let hash = self._hash(&inputs)?;
+
+        Ok(hash
+            .into_repr()
+            .to_bytes_be()
+            .try_into()
+            .map_err(|_| PoseidonError::VecToArray)?)
+    }
+
+    fn hash_bytes(inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
+        let inputs: Vec<Fp256<FrParameters>> = inputs
+        .iter()
+        .map(|bytes| Fp256::<FrParameters>::from_be_bytes_mod_order(bytes))
+        .collect();
+        if inputs.len() > MAX_X5_LEN {
+            return Err(PoseidonError::InvalidNumberOfInputs {
+                inputs: inputs.len(),
+                max_limit: MAX_X5_LEN,
+                width: MAX_X5_LEN,
+            });
+        }
+        let params = crate::parameters::bn254_x5::get_poseidon_parameters((inputs.len() + 1).try_into().map_err(|_| PoseidonError::U64Tou8)?);
+        let mut poseidon = Poseidon::new(params);
+
+        let hash = poseidon._hash(&inputs[..])?;
 
         Ok(hash
             .into_repr()

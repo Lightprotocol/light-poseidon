@@ -1,16 +1,14 @@
 use ark_ff::{BigInteger, PrimeField};
 
-use light_poseidon::{parameters::bn254_x5, Poseidon, PoseidonBytesHasher, PoseidonHasher};
+use light_poseidon::Poseidon;
 
 #[test]
 fn test_poseidon_bn254_x5_fq_input_ones_twos() {
-    let params = bn254_x5::get_poseidon_parameters(3);
-    let mut poseidon = Poseidon::new(params);
 
     let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
     let input2 = Fr::from_be_bytes_mod_order(&[2u8; 32]);
 
-    let hash = Poseidon::<Fr>::hash(&[input1, input2]).unwrap();
+    let hash = Poseidon::<Fr>::hash_circom(&[input1, input2]).unwrap();
     assert_eq!(
         hash.into_repr().to_bytes_be(),
         [
@@ -22,13 +20,10 @@ fn test_poseidon_bn254_x5_fq_input_ones_twos() {
 use ark_bn254::Fr;
 #[test]
 fn test_poseidon_bn254_x5_fq_input_one_two() {
-    let params = bn254_x5::get_poseidon_parameters(3);
-    let mut poseidon = Poseidon::new(params);
-
     let input1 = Fr::from_be_bytes_mod_order(&[1]);
     let input2 = Fr::from_be_bytes_mod_order(&[2]);
 
-    let hash = Poseidon::<Fr>::hash(&[input1, input2]).unwrap();
+    let hash = Poseidon::<Fr>::hash_circom(&[input1, input2]).unwrap();
 
     assert_eq!(
         hash.into_repr().to_bytes_le(),
@@ -41,9 +36,6 @@ fn test_poseidon_bn254_x5_fq_input_one_two() {
 
 #[test]
 fn test_poseidon_bn254_x5_fq_input_random() {
-    let params = bn254_x5::get_poseidon_parameters(3);
-    let mut poseidon = Poseidon::new(params);
-
     let input1 = Fr::from_be_bytes_mod_order(&[
         0x06, 0x9c, 0x63, 0x81, 0xac, 0x0b, 0x96, 0x8e, 0x88, 0x1c, 0x91, 0x3c, 0x17, 0xd8, 0x36,
         0x06, 0x7f, 0xd1, 0x5f, 0x2c, 0xc7, 0x9f, 0x90, 0x2c, 0x80, 0x70, 0xb3, 0x6d, 0x28, 0x66,
@@ -55,7 +47,7 @@ fn test_poseidon_bn254_x5_fq_input_random() {
         0x30, 0x0b,
     ]);
 
-    let hash = Poseidon::<Fr>::hash(&[input1, input2]).unwrap();
+    let hash = Poseidon::<Fr>::hash_circom(&[input1, input2]).unwrap();
     assert_eq!(
         hash.into_repr().to_bytes_le(),
         [
@@ -69,28 +61,19 @@ fn test_poseidon_bn254_x5_fq_input_random() {
 fn test_poseidon_bn254_x5_fq_input_invalid() {
    
     let mut vec = Vec::new();
-    for i in 0..17 {
+    for _ in 0..17 {
         vec.push(Fr::from_be_bytes_mod_order(&[1u8; 32]));
     }
-    // let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
-    // let input2 = Fr::from_be_bytes_mod_order(&[2u8; 32]);
-    // let input3 = Fr::from_be_bytes_mod_order(&[3u8; 32]);
+    assert!(Poseidon::<Fr>::hash_circom(&vec).is_err());
 
-    assert!(Poseidon::<Fr>::hash(&vec).is_err());
-
-    // let input4 = Fr::from_be_bytes_mod_order(&[4u8; 32]);
     vec.push(Fr::from_be_bytes_mod_order(&[4u8; 32]));
 
-    assert!(Poseidon::<Fr>::hash(&vec).is_err());
+    assert!(Poseidon::<Fr>::hash_circom(&vec).is_err());
 }
-use ark_bn254::FrParameters;
-use ark_ff::Fp256;
+
 #[test]
 fn test_poseidon_bn254_x5_fq_hash_bytes() {
-    let params = bn254_x5::get_poseidon_parameters(3);
-    let mut poseidon = Poseidon::new(params);
-
-    let hash = Poseidon::<Fp256<FrParameters>>::hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
+    let hash = Poseidon::<Fr>::hash_bytes_circom(&[&[1u8; 32], &[2u8; 32]]).unwrap();
 
     assert_eq!(
         hash,
@@ -176,18 +159,14 @@ fn test_params_18() {
     let value = [vec![0u8; 31], vec![1u8]].concat();
     for i in 2..18 {
         inputs.push(value.as_slice());
-        // let params = bn254_x5::get_poseidon_parameters(i as u8);
-        // let mut poseidon = Poseidon::new(params);
-        let hash = Poseidon::<Fp256<FrParameters>>::hash_bytes(&inputs[..]).unwrap();
+        let hash = Poseidon::<Fr>::hash_bytes_circom(&inputs[..]).unwrap();
         assert_eq!(hash, TEST_CASES[i - 2]);
     }
     let mut inputs = Vec::new();
     let value = [vec![0u8; 31], vec![2u8]].concat();
     for i in 2..18 {
         inputs.push(value.as_slice());
-        // let params = bn254_x5::get_poseidon_parameters(i as u8);
-        // let mut poseidon = Poseidon::new(params);
-        let hash = Poseidon::<Fp256<FrParameters>>::hash_bytes(&inputs[..]).unwrap();
+        let hash = Poseidon::<Fr>::hash_bytes_circom(&inputs[..]).unwrap();
         assert!(hash != TEST_CASES[i - 2]);
     }
 }

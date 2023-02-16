@@ -168,8 +168,6 @@
 use ark_bn254::Fr;
 use ark_ff::{BigInteger, PrimeField};
 use thiserror::Error;
-use ark_ff::Fp256;
-use ark_bn254::FrParameters;
 
 pub mod parameters;
 
@@ -358,7 +356,6 @@ impl<F: PrimeField> Poseidon<F> {
 }
 
 impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
-
     fn hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError> {
 
 
@@ -380,7 +377,7 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
         }
 
         let all_rounds = self.params.full_rounds + self.params.partial_rounds;
-        let half_rounds = self.params.full_rounds / 2; // iden3 has - 1 here
+        let half_rounds = self.params.full_rounds / 2;
 
         // full rounds + partial rounds
         for round in 0..half_rounds {
@@ -407,7 +404,6 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
     }
 }
 
-
 impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
     fn hash_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
         let inputs: Vec<F> = inputs
@@ -424,48 +420,6 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
     }
 }
 
-impl<F: PrimeField> Poseidon<F> {
-    pub fn hash_circom(inputs: &[Fp256::<FrParameters>]) -> Result<Fp256::<FrParameters>, PoseidonError> {
-
-        if inputs.len() > MAX_X5_LEN {
-            return Err(PoseidonError::InvalidNumberOfInputs {
-                inputs: inputs.len(),
-                max_limit: MAX_X5_LEN,
-                width: MAX_X5_LEN,
-            });
-        }
-
-        let params = crate::parameters::bn254_x5::get_poseidon_parameters((inputs.len() + 1).try_into().map_err(|_| PoseidonError::U64Tou8)?);
-        let mut poseidon = Poseidon::new(params);
-
-        let hash = poseidon.hash(&inputs[..])?;
-
-        Ok(hash)
-    }
-
-    pub fn hash_bytes_circom(inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
-        let inputs: Vec<Fp256<FrParameters>> = inputs
-        .iter()
-        .map(|bytes| Fp256::<FrParameters>::from_be_bytes_mod_order(bytes))
-        .collect();
-        if inputs.len() > MAX_X5_LEN {
-            return Err(PoseidonError::InvalidNumberOfInputs {
-                inputs: inputs.len(),
-                max_limit: MAX_X5_LEN,
-                width: MAX_X5_LEN,
-            });
-        }
-        let params = crate::parameters::bn254_x5::get_poseidon_parameters((inputs.len() + 1).try_into().map_err(|_| PoseidonError::U64Tou8)?);
-        let mut poseidon = Poseidon::new(params);
-
-        let hash = poseidon.hash(&inputs[..])?;
-
-        hash.into_repr()
-            .to_bytes_be()
-            .try_into()
-            .map_err(|_| PoseidonError::VecToArray)
-    }
-}
 
 impl<F: PrimeField> Poseidon<F> {
     pub fn new_circom(nr_inputs: usize) -> Result<Poseidon<Fr>, PoseidonError> {

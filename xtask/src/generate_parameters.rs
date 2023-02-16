@@ -8,7 +8,7 @@ use std::{
 };
 
 use ark_ff::{BigInteger, BigInteger256};
-use clap::{Parser};
+use clap::Parser;
 
 #[derive(Debug, Parser)]
 pub struct Options {
@@ -44,6 +44,16 @@ fn rustfmt(code: String) -> Result<Vec<u8>, anyhow::Error> {
     Ok(formatted_code)
 }
 use std::path::Path;
+
+const FIELD: &str = "1";
+const SBOX: &str = "0";
+const FIELD_ELEMENT_BIT_SIZE: &str = "254";
+const FULL_ROUNDS: &str = "8";
+const PARTIAL_ROUNDS: [u8; 16] = [
+    56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65, 70, 60, 64, 68,
+];
+const MODULUS_HEX: &str = "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
+
 pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
     // git clone hadehash into target
     // create params to compute files in target
@@ -52,35 +62,45 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
     // remove [ ], split at , parse
     if !Path::new("./target/hadeshash").exists() {
         let _git_result = std::process::Command::new("git")
-        .arg("clone")
-        .arg("https://extgit.iaik.tugraz.at/krypto/hadeshash.git")
-        .arg("./target/hadeshash")
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .output()
-        .map_err(|e| anyhow::format_err!("git clone failed: {}", e.to_string()))?;
+            .arg("clone")
+            .arg("https://extgit.iaik.tugraz.at/krypto/hadeshash.git")
+            .arg("./target/hadeshash")
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .output()
+            .map_err(|e| anyhow::format_err!("git clone failed: {}", e.to_string()))?;
     }
-    let partial_rounds = [56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65, 70, 60, 64, 68];
     if !Path::new("./target/params").exists() {
         let _mkdir_result = std::process::Command::new("mkdir")
-        .arg("./target/params")
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .output()
-        .map_err(|e| anyhow::format_err!("mkdir failed: {}", e.to_string()))?;
-        
+            .arg("./target/params")
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .output()
+            .map_err(|e| anyhow::format_err!("mkdir failed: {}", e.to_string()))?;
     }
     for i in 2..18 {
         let path = format!("./target/params/poseidon_params_bn254_x5_{}", i);
 
         if !Path::new(&path).exists() {
-            println!("Generating Parameters partial rounds {} t = {}", partial_rounds [i-2],i );
+            println!(
+                "Generating Parameters partial rounds {} t = {}",
+                PARTIAL_ROUNDS[i - 2],
+                i
+            );
             let arg = format!("./target/hadeshash/code/generate_parameters_grain.sage");
 
-            let output = std::process::Command::new("sage")        
-            .args([
-                arg, String::from("1"), String::from("0"), String::from("254"),  format!("{}",i),  String::from("8"), format!("{}",partial_rounds[i - 2]), String::from("0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"),
-            ]).output()?;
+            let output = std::process::Command::new("sage")
+                .args([
+                    arg,
+                    FIELD.to_string(),
+                    SBOX.to_string(),
+                    FIELD_ELEMENT_BIT_SIZE.to_string(),
+                    format!("{}", i),
+                    FULL_ROUNDS.to_string(),
+                    format!("{}", PARTIAL_ROUNDS[i - 2]),
+                    MODULUS_HEX.to_string(),
+                ])
+                .output()?;
             let mut file = File::create(&path)?;
             file.write_all(&output.stdout)?;
         }
@@ -124,18 +144,13 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
     match t {
         0_u8..=1_u8 | 18_u8..=u8::MAX => {unimplemented!()}\n";
     for t in 2..18 {
-        let path = [
-            String::from("./target/params/poseidon_params_bn254_x5_"),
-            t.to_string()
-        ]
-        .concat();
+        let path = format!("./target/params/poseidon_params_bn254_x5_{}", t);
         let mut file = File::open(path)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
         let lines = contents.lines();
 
         for line in lines {
-
             if line.starts_with("['") {
                 code += &[
                     String::from("\t"),
@@ -192,24 +207,17 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
                 code += &String::from("\t\t];\n");
             }
         }
-        code += &[
-            String::from(
-                "
-            crate::PoseidonParameters::new(
+        code += &format!(
+            "crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
-            PARTIAL_ROUNDS[",
-            ),
-            (t - 2).to_string(),
-            String::from(
-                "],
+            PARTIAL_ROUNDS[{}],
             t.into(),
             ALPHA,
             )\n",
-            ),
-        ]
-        .concat();
+            t - 2
+        );
         code += "\t}}\n";
     }
 
@@ -221,7 +229,6 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
     file.write_all(&rustfmt(code.to_string())?)?;
 
     println!("Poseidon Parameters written to {:?}", path);
-
 
     Ok(())
 }
@@ -235,12 +242,10 @@ fn get_fr_string(string: &String) -> String {
     BigInteger256::read_le(&mut x, &mut bytes.as_slice()).unwrap();
 
     for i in 0..4 {
-        tmp_str += &[
-            String::from("\t"),
-            u64::from_le_bytes(bytes[i * 8..(i + 1) * 8].try_into().unwrap()).to_string(),
-            String::from(",\n"),
-        ]
-        .concat();
+        tmp_str += &format!(
+            "\t{},\n",
+            u64::from_le_bytes(bytes[i * 8..(i + 1) * 8].try_into().unwrap())
+        );
     }
 
     tmp_str += "])),\n";

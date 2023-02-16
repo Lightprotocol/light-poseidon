@@ -4,7 +4,6 @@ use light_poseidon::Poseidon;
 
 #[test]
 fn test_poseidon_bn254_x5_fq_input_ones_twos() {
-
     let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
     let input2 = Fr::from_be_bytes_mod_order(&[2u8; 32]);
 
@@ -59,7 +58,6 @@ fn test_poseidon_bn254_x5_fq_input_random() {
 
 #[test]
 fn test_poseidon_bn254_x5_fq_input_invalid() {
-   
     let mut vec = Vec::new();
     for _ in 0..17 {
         vec.push(Fr::from_be_bytes_mod_order(&[1u8; 32]));
@@ -83,7 +81,6 @@ fn test_poseidon_bn254_x5_fq_hash_bytes() {
         ]
     );
 }
-
 
 // test cases were created with circomlibjs poseidon([1, ...]) for 1 to 16 inputs
 const TEST_CASES: [[u8; 32]; 16] = [

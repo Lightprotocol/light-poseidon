@@ -74,8 +74,7 @@ fn test_poseidon_bn254_x5_fq_input_invalid() {
 
     assert!(hasher.hash(&vec).is_err());
 }
-use ark_bn254::FrParameters;
-use ark_ff::Fp256;
+
 #[test]
 fn test_poseidon_bn254_x5_fq_hash_bytes() {
     let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();

@@ -11,7 +11,7 @@ fn test_poseidon_bn254_x5_fq_input_ones_twos() {
     let hash = hasher.hash(&[input1, input2]).unwrap();
 
     assert_eq!(
-        hash.into_repr().to_bytes_be(),
+        hash.into_bigint().to_bytes_be(),
         [
             13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123, 132,
             254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
@@ -28,7 +28,7 @@ fn test_poseidon_bn254_x5_fq_input_one_two() {
     let hash = hasher.hash(&[input1, input2]).unwrap();
 
     assert_eq!(
-        hash.into_repr().to_bytes_le(),
+        hash.into_bigint().to_bytes_le(),
         [
             154, 24, 23, 68, 122, 96, 25, 158, 81, 69, 50, 116, 242, 23, 54, 42, 207, 233, 98, 150,
             107, 76, 246, 61, 65, 144, 214, 231, 245, 192, 92, 17
@@ -52,7 +52,7 @@ fn test_poseidon_bn254_x5_fq_input_random() {
     let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
     let hash = hasher.hash(&[input1, input2]).unwrap();
     assert_eq!(
-        hash.into_repr().to_bytes_le(),
+        hash.into_bigint().to_bytes_le(),
         [
             75, 85, 249, 42, 66, 238, 230, 151, 158, 90, 250, 51, 131, 212, 131, 18, 151, 235, 96,
             103, 135, 243, 186, 61, 173, 135, 52, 77, 132, 173, 19, 10

@@ -188,7 +188,6 @@ pub enum PoseidonError {
     U64Tou8,
     #[error("Selected width is invalid, select a width between 2 and 16, for 1 to 15 inputs.")]
     InvalidWidthCircom { width: usize, max_limit: usize },
-
 }
 
 /// Parameters for the Poseidon hash algorithm.
@@ -412,11 +411,10 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
             .collect();
         let hash = self.hash(&inputs)?;
 
-        Ok(hash
-            .into_repr()
+        hash.into_repr()
             .to_bytes_be()
             .try_into()
-            .map_err(|_| PoseidonError::VecToArray)?)
+            .map_err(|_| PoseidonError::VecToArray)
     }
 }
 

@@ -411,14 +411,12 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
             .collect();
         let hash = self.hash(&inputs)?;
 
-        hash
-            .into_bigint()
+        hash.into_bigint()
             .to_bytes_be()
             .try_into()
             .map_err(|_| PoseidonError::VecToArray)
     }
 }
-
 
 impl<F: PrimeField> Poseidon<F> {
     pub fn new_circom(nr_inputs: usize) -> Result<Poseidon<Fr>, PoseidonError> {

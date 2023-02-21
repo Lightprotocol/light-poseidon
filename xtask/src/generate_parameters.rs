@@ -124,7 +124,7 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
     //! sage generate_parameters_grain.sage 1 0 254 3 8 57 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
     //! ```
     pub const FULL_ROUNDS: usize = 8;
-    pub const PARTIAL_ROUNDS: [usize; 16] = [56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65, 70, 60, 64, 68];
+    pub const PARTIAL_ROUNDS: [usize; 15] = [56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65, 70, 60, 64];
     pub const ALPHA: u64 = 5;
 
     /// Returns Poseidon parameters for the BN254 curve with the following

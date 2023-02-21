@@ -158,7 +158,7 @@ const TEST_CASES: [[u8; 32]; 16] = [
 ];
 
 #[test]
-fn test_params_18() {
+fn test_1_to_15_inputs() {
     let mut inputs = Vec::new();
     let value = [vec![0u8; 31], vec![1u8]].concat();
     for i in 1..16 {

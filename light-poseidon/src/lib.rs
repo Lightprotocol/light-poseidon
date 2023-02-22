@@ -10,9 +10,10 @@
 //! Parameters provided by the library are:
 //!
 //! * x^5 S-boxes
-//! * 3 prime fields (one zero prime field and two inputs from the caller)
-//! * 8 full rounds and 57 partial rounds
-//!
+//! * t = 2 - 17 (for 1 to 16 inputs)
+//! * 8 full rounds and partial rounds depending on t [56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65, 70, 60, 64, 68]
+//! The parameters can be generated with:
+//! ```$ cargo xtask generate-poseidon-parameters``
 //! # Output type
 //!
 //! [`Poseidon`](crate::Poseidon) type implements two traits which serve the purpose
@@ -29,26 +30,25 @@
 //!
 //! # Examples
 //!
-//! Example with two simple big-endian byte inputs (converted to prime fields)
+//! Example with two simple big-endian byte inputs (converted to field elements)
 //! and BN254-based parameters provided by the library, with
 //! [`PoseidonBytesHasher`](crate::PoseidonHasher) trait and a byte array
 //! result:
 //!
 //! ```rust
-//! use light_poseidon::{Poseidon, PoseidonBytesHasher, parameters::bn254_x5_3::poseidon_parameters};
-//! use ark_bn254::Fq;
+//! use light_poseidon::{Poseidon, PoseidonBytesHasher, parameters::bn254_x5};
+//! use ark_bn254::Fr;
 //! use ark_ff::{BigInteger, PrimeField};
 //!
-//! let params = poseidon_parameters!(Fq);
-//! let mut poseidon = Poseidon::new(params);
+//! let mut poseidon = Poseidon::<Fr>::new_circom(2).unwrap();
 //!
 //! let hash = poseidon.hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
 //!
 //! println!("{:?}", hash);
 //! // Should print:
 //! // [
-//! //     40, 7, 251, 60, 51, 30, 115, 141, 251, 200, 13, 46, 134, 91, 113, 170, 131, 90, 53,
-//! //     175, 9, 61, 242, 164, 127, 33, 249, 65, 253, 131, 35, 116
+//! //     13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123, 132,
+//! //     254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
 //! // ]
 //! ```
 //!
@@ -56,15 +56,14 @@
 //! [`ark_ff::PrimeField`](ark_ff::PrimeField) result:
 //!
 //! ```rust
-//! use light_poseidon::{Poseidon, PoseidonHasher, parameters::bn254_x5_3::poseidon_parameters};
-//! use ark_bn254::Fq;
+//! use light_poseidon::{Poseidon, PoseidonHasher, parameters::bn254_x5};
+//! use ark_bn254::Fr;
 //! use ark_ff::{BigInteger, PrimeField};
 //!
-//! let params = poseidon_parameters!(Fq);
-//! let mut poseidon = Poseidon::new(params);
+//! let mut poseidon = Poseidon::<Fr>::new_circom(2).unwrap();
 //!
-//! let input1 = Fq::from_be_bytes_mod_order(&[1u8; 32]);
-//! let input2 = Fq::from_be_bytes_mod_order(&[2u8; 32]);
+//! let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
+//! let input2 = Fr::from_be_bytes_mod_order(&[2u8; 32]);
 //!
 //! let hash = poseidon.hash(&[input1, input2]).unwrap();
 //!
@@ -83,7 +82,7 @@
 //! ## Performance
 //!
 //! This repository contains a benchmark measuring the performance of this
-//! Poseidon implementation for given two random 32 bytes inputs.
+//! Poseidon implementation for given 1 - 15 random 32 bytes inputs.
 //!
 //! To run them, simply use:
 //!
@@ -93,22 +92,87 @@
 //!
 //! This is the result from a host with the following hardware:
 //!
-//! * AMD Ryzen 9 5950x (base clock: 3.4 GHz, up to: 4.9 GHz)
-//! * 4 x Corsair Vengeance DDR4 32GB 3600 MHz
+//! * 12th Gen Intel® Core™ i7-1260P × 16
 //!
 //! ```norust
-//! poseidon_bn254_x5_3     time:   [21.980 µs 21.997 µs 22.017 µs]
-//! Found 9 outliers among 100 measurements (9.00%)
+//! poseidon_bn254_x5_1     time:   [14.656 µs 14.740 µs 14.848 µs]
+//! Found 8 outliers among 100 measurements (8.00%)
 //!   4 (4.00%) high mild
-//!   5 (5.00%) high severe
+//!   4 (4.00%) high severe
+//!
+//! poseidon_bn254_x5_2     time:   [23.013 µs 24.307 µs 25.752 µs]
+//! Found 5 outliers among 100 measurements (5.00%)
+//!   2 (2.00%) high mild
+//!   3 (3.00%) high severe
+//!
+//! poseidon_bn254_x5_3     time:   [29.276 µs 29.325 µs 29.377 µs]
+//! Found 4 outliers among 100 measurements (4.00%)
+//!   4 (4.00%) high mild
+//!
+//! poseidon_bn254_x5_4     time:   [41.699 µs 41.856 µs 42.039 µs]
+//! Found 7 outliers among 100 measurements (7.00%)
+//!   6 (6.00%) high mild
+//!   1 (1.00%) high severe
+//!
+//! poseidon_bn254_x5_5     time:   [55.947 µs 57.883 µs 60.190 µs]
+//! Found 14 outliers among 100 measurements (14.00%)
+//!   1 (1.00%) high mild
+//!   13 (13.00%) high severe
+//!
+//! poseidon_bn254_x5_6     time:   [70.992 µs 71.327 µs 71.737 µs]
+//! Found 10 outliers among 100 measurements (10.00%)
+//!   4 (4.00%) high mild
+//!   6 (6.00%) high severe
+//!
+//! poseidon_bn254_x5_7     time:   [87.824 µs 88.174 µs 88.587 µs]
+//! Found 12 outliers among 100 measurements (12.00%)
+//!   5 (5.00%) high mild
+//!   7 (7.00%) high severe
+//!
+//! poseidon_bn254_x5_8     time:   [110.07 µs 111.22 µs 112.77 µs]
+//!
+//! poseidon_bn254_x5_9     time:   [131.48 µs 131.82 µs 132.24 µs]
+//! Found 9 outliers among 100 measurements (9.00%)
+//!   1 (1.00%) high mild
+//!   8 (8.00%) high severe
+//!
+//! poseidon_bn254_x5_10    time:   [176.36 µs 177.01 µs 177.80 µs]
+//! Found 8 outliers among 100 measurements (8.00%)
+//!   1 (1.00%) low mild
+//!   6 (6.00%) high mild
+//!   1 (1.00%) high severe
+//!
+//! poseidon_bn254_x5_11    time:   [191.53 µs 192.26 µs 193.20 µs]
+//! Found 14 outliers among 100 measurements (14.00%)
+//!   8 (8.00%) high mild
+//!   6 (6.00%) high severe
+//!
+//! poseidon_bn254_x5_12    time:   [259.56 µs 273.31 µs 287.16 µs]
+//! Found 15 outliers among 100 measurements (15.00%)
+//!   15 (15.00%) high severe
+//!
+//! poseidon_bn254_x5_13    time:   [307.41 µs 307.88 µs 308.38 µs]
+//! Found 5 outliers among 100 measurements (5.00%)
+//!   2 (2.00%) high mild
+//!   3 (3.00%) high severe
+//!
+//! poseidon_bn254_x5_14    time:   [309.65 µs 311.24 µs 313.54 µs]
+//! Found 4 outliers among 100 measurements (4.00%)
+//!   2 (2.00%) high mild
+//!   2 (2.00%) high severe
+//!
+//! poseidon_bn254_x5_15    time:   [383.48 µs 385.41 µs 387.49 µs]
+//! Found 2 outliers among 100 measurements (2.00%)
+//!   2 (2.00%) high mild
 //! ```
-
+use ark_bn254::Fr;
 use ark_ff::{BigInteger, PrimeField};
 use thiserror::Error;
 
 pub mod parameters;
 
 pub const HASH_LEN: usize = 32;
+pub const MAX_X5_LEN: usize = 16;
 
 #[derive(Error, Debug)]
 pub enum PoseidonError {
@@ -120,6 +184,10 @@ pub enum PoseidonError {
     },
     #[error("Failed to convert a vector of bytes into an array")]
     VecToArray,
+    #[error("Failed to convert a the number of inputs to a u8")]
+    U64Tou8,
+    #[error("Selected width is invalid, select a width between 2 and 16, for 1 to 15 inputs.")]
+    InvalidWidthCircom { width: usize, max_limit: usize },
 }
 
 /// Parameters for the Poseidon hash algorithm.
@@ -180,15 +248,14 @@ pub trait PoseidonHasher<F: PrimeField> {
     /// fields) and BN254-based parameters provided by the library.
     ///
     /// ```rust
-    /// use light_poseidon::{Poseidon, PoseidonHasher, parameters::bn254_x5_3::poseidon_parameters};
-    /// use ark_bn254::Fq;
+    /// use light_poseidon::{Poseidon, PoseidonHasher, parameters::bn254_x5};
+    /// use ark_bn254::Fr;
     /// use ark_ff::{BigInteger, PrimeField};
     ///
-    /// let params = poseidon_parameters!(Fq);
-    /// let mut poseidon = Poseidon::new(params);
+    /// let mut poseidon = Poseidon::<Fr>::new_circom(2).unwrap();
     ///
-    /// let input1 = Fq::from_be_bytes_mod_order(&[1u8; 32]);
-    /// let input2 = Fq::from_be_bytes_mod_order(&[2u8; 32]);
+    /// let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
+    /// let input2 = Fr::from_be_bytes_mod_order(&[2u8; 32]);
     ///
     /// let hash = poseidon.hash(&[input1, input2]).unwrap();
     ///
@@ -217,20 +284,19 @@ pub trait PoseidonBytesHasher {
     /// parameters provided by the library.
     ///
     /// ```rust
-    /// use light_poseidon::{Poseidon, PoseidonBytesHasher, parameters::bn254_x5_3::poseidon_parameters};
-    /// use ark_bn254::Fq;
+    /// use light_poseidon::{Poseidon, PoseidonBytesHasher, parameters::bn254_x5};
+    /// use ark_bn254::Fr;
     /// use ark_ff::{BigInteger, PrimeField};
     ///
-    /// let params = poseidon_parameters!(Fq);
-    /// let mut poseidon = Poseidon::new(params);
+    /// let mut poseidon = Poseidon::<Fr>::new_circom(2).unwrap();
     ///
     /// let hash = poseidon.hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
     ///
     /// println!("{:?}", hash);
     /// // Should print:
     /// // [
-    /// //     40, 7, 251, 60, 51, 30, 115, 141, 251, 200, 13, 46, 134, 91, 113, 170, 131, 90, 53,
-    /// //     175, 9, 61, 242, 164, 127, 33, 249, 65, 253, 131, 35, 116
+    /// //     13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123, 132,
+    /// //     254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
     /// // ]
     /// ```
     fn hash_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError>;
@@ -310,6 +376,7 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
         let all_rounds = self.params.full_rounds + self.params.partial_rounds;
         let half_rounds = self.params.full_rounds / 2;
 
+        // full rounds + partial rounds
         for round in 0..half_rounds {
             self.apply_ark(round);
             self.apply_sbox_full();
@@ -342,10 +409,26 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
             .collect();
         let hash = self.hash(&inputs)?;
 
-        Ok(hash
-            .into_repr()
+        hash.into_repr()
             .to_bytes_be()
             .try_into()
-            .map_err(|_| PoseidonError::VecToArray)?)
+            .map_err(|_| PoseidonError::VecToArray)
+    }
+}
+
+impl<F: PrimeField> Poseidon<F> {
+    pub fn new_circom(nr_inputs: usize) -> Result<Poseidon<Fr>, PoseidonError> {
+        let width = nr_inputs + 1;
+        if width > MAX_X5_LEN {
+            return Err(PoseidonError::InvalidWidthCircom {
+                width,
+                max_limit: MAX_X5_LEN,
+            });
+        }
+
+        let params = crate::parameters::bn254_x5::get_poseidon_parameters::<Fr>(
+            (width).try_into().map_err(|_| PoseidonError::U64Tou8)?,
+        );
+        Ok(Poseidon::<Fr>::new(params))
     }
 }

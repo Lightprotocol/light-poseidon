@@ -409,7 +409,7 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
             .collect();
         let hash = self.hash(&inputs)?;
 
-        hash.into_repr()
+        hash.into_bigint()
             .to_bytes_be()
             .try_into()
             .map_err(|_| PoseidonError::VecToArray)

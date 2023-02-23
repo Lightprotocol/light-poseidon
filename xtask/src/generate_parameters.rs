@@ -7,7 +7,6 @@ use std::{
     thread::spawn,
 };
 
-use ark_ff::{BigInteger, BigInteger256};
 use clap::Parser;
 
 #[derive(Debug, Parser)]
@@ -237,13 +236,9 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
 }
 
 fn get_fr_string(string: &str) -> String {
-    let mut x = BigInteger256::new([0u64, 0u64, 0u64, 0u64]);
     let mut bytes = hex::decode(string.split_at(2).1).unwrap();
     let mut tmp_str = String::from("F::from(ark_ff::BigInteger256::new([\n");
     bytes.reverse();
-
-    BigInteger256::read_le(&mut x, &mut bytes.as_slice()).unwrap();
-
     for i in 0..4 {
         tmp_str += &format!(
             "\t{},\n",

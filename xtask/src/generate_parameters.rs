@@ -78,7 +78,7 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
             .output()
             .map_err(|e| anyhow::format_err!("mkdir failed: {}", e.to_string()))?;
     }
-    for i in 2..18 {
+    for i in 2..17 {
         let path = format!("./target/params/poseidon_params_bn254_x5_{}", i);
 
         if !Path::new(&path).exists() {
@@ -260,12 +260,12 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
         #[cfg(not(feature = \"solana\"))]
         return Err(PoseidonError::InvalidWidthCircom {
             width: t as usize,
-            max_limit: 15usize,
+            max_limit: 16usize,
         });
         #[cfg(feature = \"solana\")]
         return Err(PoseidonError::InvalidWidthCircom {
             width: t as usize,
-            max_limit: 12usize,
+            max_limit: 13usize,
         });\n
     }";
     code += "}\n";

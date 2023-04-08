@@ -174,7 +174,7 @@ pub mod parameters;
 pub const HASH_LEN: usize = 32;
 pub const MAX_X5_LEN: usize = 16;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum PoseidonError {
     #[error("Invalid number of inputs: {inputs}, the maximum limit is {max_limit} ({width} - 1)")]
     InvalidNumberOfInputs {
@@ -428,7 +428,7 @@ impl<F: PrimeField> Poseidon<F> {
 
         let params = crate::parameters::bn254_x5::get_poseidon_parameters::<Fr>(
             (width).try_into().map_err(|_| PoseidonError::U64Tou8)?,
-        );
+        )?;
         Ok(Poseidon::<Fr>::new(params))
     }
 }

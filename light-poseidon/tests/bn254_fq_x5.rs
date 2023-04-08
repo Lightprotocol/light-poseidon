@@ -222,6 +222,36 @@ fn test_circom_solana_t_gt_12_fails() {
         }
     }
 }
+#[cfg(not(feature = "solana"))]
+#[test]
+fn test_circom_t_0_fails() {
+    use light_poseidon::PoseidonError;
+    let hasher = Poseidon::<Fr>::new_circom(0);
+    unsafe {
+        assert_eq!(
+            hasher.unwrap_err_unchecked(),
+            PoseidonError::InvalidWidthCircom {
+                width: 1,
+                max_limit: 16
+            }
+        );
+    }
+}
+#[cfg(feature = "solana")]
+#[test]
+fn test_circom_t_0_fails() {
+    use light_poseidon::PoseidonError;
+    let hasher = Poseidon::<Fr>::new_circom(0);
+    unsafe {
+        assert_eq!(
+            hasher.unwrap_err_unchecked(),
+            PoseidonError::InvalidWidthCircom {
+                width: 1,
+                max_limit: 13
+            }
+        );
+    }
+}
 
 #[test]
 fn test_circom_t_gt_16_fails() {

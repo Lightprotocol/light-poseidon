@@ -66879,12 +66879,12 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
         #[cfg(not(feature = "solana"))]
         return Err(PoseidonError::InvalidWidthCircom {
             width: t as usize,
-            max_limit: 15usize,
+            max_limit: 16usize,
         });
         #[cfg(feature = "solana")]
         return Err(PoseidonError::InvalidWidthCircom {
             width: t as usize,
-            max_limit: 12usize,
+            max_limit: 13usize,
         });
     }
 }

@@ -138,16 +138,16 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
     /// [`ark_ff::PrimeField`](ark_ff::PrimeField).
     use ark_ff::PrimeField;
     use crate::{PoseidonParameters, PoseidonError};
-    // to avoid warnings when solana feature is used
+    // to avoid warnings when width_limit_13 feature is used
     #[allow(unused_variables)]
     pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInteger256>>(t: u8) -> Result<PoseidonParameters<F>, PoseidonError> {
     if t == 0_u8 {
-        #[cfg(not(feature = \"solana\"))]
+        #[cfg(not(feature = \"width_limit_13\"))]
         return Err(PoseidonError::InvalidWidthCircom {
             width: t as usize,
             max_limit: 16usize,
         });
-        #[cfg(feature = \"solana\")]
+        #[cfg(feature = \"width_limit_13\")]
         return Err(PoseidonError::InvalidWidthCircom {
             width: t as usize,
             max_limit: 13usize,
@@ -232,7 +232,7 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
             );
         } else {
             code += &format!(
-                "#[cfg(feature = \"solana\")]
+                "#[cfg(feature = \"width_limit_13\")]
                 return Err(PoseidonError::InvalidWidthCircom {{
                     width: {} as usize,
                     max_limit: 13usize,
@@ -242,7 +242,7 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
 
             code += &format!(
                 "
-                #[cfg(not(feature = \"solana\"))]
+                #[cfg(not(feature = \"width_limit_13\"))]
                 return Ok(crate::PoseidonParameters::new(
                 ark,
                 mds,
@@ -257,12 +257,12 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
         code += "\t}\n";
     }
     code += "else {
-        #[cfg(not(feature = \"solana\"))]
+        #[cfg(not(feature = \"width_limit_13\"))]
         return Err(PoseidonError::InvalidWidthCircom {
             width: t as usize,
             max_limit: 16usize,
         });
-        #[cfg(feature = \"solana\")]
+        #[cfg(feature = \"width_limit_13\")]
         return Err(PoseidonError::InvalidWidthCircom {
             width: t as usize,
             max_limit: 13usize,

@@ -158,10 +158,10 @@ const TEST_CASES: [[u8; 32]; 16] = [
 ];
 
 #[test]
-fn test_1_to_15_inputs() {
+fn test_circom_1_to_12_inputs() {
     let mut inputs = Vec::new();
     let value = [vec![0u8; 31], vec![1u8]].concat();
-    for i in 1..16 {
+    for i in 1..13 {
         inputs.push(value.as_slice());
         let mut hasher = Poseidon::<Fr>::new_circom(i).unwrap();
         let hash = hasher.hash_bytes(&inputs[..]).unwrap();
@@ -169,10 +169,74 @@ fn test_1_to_15_inputs() {
     }
     let mut inputs = Vec::new();
     let value = [vec![0u8; 31], vec![2u8]].concat();
-    for i in 1..16 {
+    for i in 1..13 {
         inputs.push(value.as_slice());
         let mut hasher = Poseidon::<Fr>::new_circom(i).unwrap();
         let hash = hasher.hash_bytes(&inputs[..]).unwrap();
         assert!(hash != TEST_CASES[i - 1]);
+    }
+}
+
+#[cfg(not(feature = "solana"))]
+#[test]
+fn test_circom_13_to_15_inputs() {
+    let mut inputs = Vec::new();
+    let value = [vec![0u8; 31], vec![1u8]].concat();
+    for _ in 1..13 {
+        inputs.push(value.as_slice());
+    }
+    for i in 13..16 {
+        inputs.push(value.as_slice());
+        let mut hasher = Poseidon::<Fr>::new_circom(i).unwrap();
+        let hash = hasher.hash_bytes(&inputs[..]).unwrap();
+        assert_eq!(hash, TEST_CASES[i - 1]);
+    }
+    let mut inputs = Vec::new();
+    let value = [vec![0u8; 31], vec![2u8]].concat();
+    for i in 13..16 {
+        inputs.push(value.as_slice());
+        let mut hasher = Poseidon::<Fr>::new_circom(i).unwrap();
+        let hash = hasher.hash_bytes(&inputs[..]).unwrap();
+        assert!(hash != TEST_CASES[i - 1]);
+    }
+}
+
+#[cfg(feature = "solana")]
+#[test]
+fn test_circom_solana_t_gt_12_fails() {
+    use light_poseidon::PoseidonError;
+
+    let mut inputs = Vec::new();
+    let value = [vec![0u8; 31], vec![1u8]].concat();
+    for i in 13..16 {
+        inputs.push(value.as_slice());
+        let hasher = Poseidon::<Fr>::new_circom(i);
+        unsafe {
+            assert_eq!(
+                hasher.unwrap_err_unchecked(),
+                PoseidonError::InvalidWidthCircom {
+                    width: i + 1,
+                    max_limit: 13
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn test_circom_t_gt_16_fails() {
+    use light_poseidon::PoseidonError;
+
+    for i in 16..17 {
+        let hasher = Poseidon::<Fr>::new_circom(i);
+        unsafe {
+            assert_eq!(
+                hasher.unwrap_err_unchecked(),
+                PoseidonError::InvalidWidthCircom {
+                    width: i + 1,
+                    max_limit: 16
+                }
+            );
+        }
     }
 }

@@ -20,7 +20,7 @@ pub const PARTIAL_ROUNDS: [usize; 15] =
     [56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65, 70, 60, 64];
 pub const ALPHA: u64 = 5;
 
-use crate::PoseidonParameters;
+use crate::{PoseidonError, PoseidonParameters};
 /// Returns Poseidon parameters for the BN254 curve with the following
 /// properties:
 ///
@@ -31,11 +31,22 @@ use crate::PoseidonParameters;
 /// The argument of this macro is a type which implements
 /// [`ark_ff::PrimeField`](ark_ff::PrimeField).
 use ark_ff::PrimeField;
+// to avoid warnings when solana feature is used
+#[allow(unused_variables)]
 pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInteger256>>(
     t: u8,
-) -> PoseidonParameters<F> {
+) -> Result<PoseidonParameters<F>, PoseidonError> {
     if t == 0_u8 {
-        unimplemented!()
+        #[cfg(not(feature = "solana"))]
+        return Err(PoseidonError::InvalidWidthCircom {
+            width: t as usize,
+            max_limit: 16usize,
+        });
+        #[cfg(feature = "solana")]
+        return Err(PoseidonError::InvalidWidthCircom {
+            width: t as usize,
+            max_limit: 13usize,
+        });
     } else if 2 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -837,14 +848,14 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[0],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 3 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -2080,14 +2091,14 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[1],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 4 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -3733,14 +3744,14 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[2],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 5 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -5946,14 +5957,14 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[3],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 6 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -8635,14 +8646,14 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[4],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 7 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -11938,14 +11949,14 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[5],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 8 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -15807,14 +15818,14 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[6],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 9 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -20158,14 +20169,14 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[7],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 10 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -24871,14 +24882,14 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[8],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 11 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -30516,14 +30527,14 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[9],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 12 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -36313,14 +36324,14 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[10],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 13 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -43060,14 +43071,14 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[11],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 14 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -50829,14 +50840,21 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        #[cfg(feature = "solana")]
+        return Err(PoseidonError::InvalidWidthCircom {
+            width: 14 as usize,
+            max_limit: 13usize,
+        });
+
+        #[cfg(not(feature = "solana"))]
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[12],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 15 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -58342,14 +58360,21 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        #[cfg(feature = "solana")]
+        return Err(PoseidonError::InvalidWidthCircom {
+            width: 15 as usize,
+            max_limit: 13usize,
+        });
+
+        #[cfg(not(feature = "solana"))]
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[13],
             t.into(),
             ALPHA,
-        );
+        ));
     } else if 16 == t {
         let ark = vec![
             F::from(ark_ff::BigInteger256::new([
@@ -66835,15 +66860,31 @@ pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInt
                 ])),
             ],
         ];
-        return crate::PoseidonParameters::new(
+        #[cfg(feature = "solana")]
+        return Err(PoseidonError::InvalidWidthCircom {
+            width: 16 as usize,
+            max_limit: 13usize,
+        });
+
+        #[cfg(not(feature = "solana"))]
+        return Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[14],
             t.into(),
             ALPHA,
-        );
+        ));
     } else {
-        unimplemented!();
+        #[cfg(not(feature = "solana"))]
+        return Err(PoseidonError::InvalidWidthCircom {
+            width: t as usize,
+            max_limit: 15usize,
+        });
+        #[cfg(feature = "solana")]
+        return Err(PoseidonError::InvalidWidthCircom {
+            width: t as usize,
+            max_limit: 12usize,
+        });
     }
 }

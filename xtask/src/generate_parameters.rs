@@ -44,6 +44,7 @@ fn rustfmt(code: String) -> Result<Vec<u8>, anyhow::Error> {
 }
 use std::path::Path;
 
+const MAX_SOLANA_LIMIT: usize = 14;
 const FIELD: &str = "1";
 const SBOX: &str = "0";
 const FIELD_ELEMENT_BIT_SIZE: &str = "254";
@@ -136,9 +137,22 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
     /// The argument of this macro is a type which implements
     /// [`ark_ff::PrimeField`](ark_ff::PrimeField).
     use ark_ff::PrimeField;
-    use crate::PoseidonParameters;
-    pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInteger256>>(t: u8) -> PoseidonParameters<F> {
-    if t == 0_u8 { unimplemented!()}\n";
+    use crate::{PoseidonParameters, PoseidonError};
+    // to avoid warnings when solana feature is used
+    #[allow(unused_variables)]
+    pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInteger256>>(t: u8) -> Result<PoseidonParameters<F>, PoseidonError> {
+    if t == 0_u8 {
+        #[cfg(not(feature = \"solana\"))]
+        return Err(PoseidonError::InvalidWidthCircom {
+            width: t as usize,
+            max_limit: 16usize,
+        });
+        #[cfg(feature = \"solana\")]
+        return Err(PoseidonError::InvalidWidthCircom {
+            width: t as usize,
+            max_limit: 13usize,
+        });\n
+    }\n";
     for t in 2..17 {
         let path = format!("./target/params/poseidon_params_bn254_x5_{}", t);
         let mut file = File::open(path)?;
@@ -204,21 +218,55 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
                 code += &String::from("\t\t];\n");
             }
         }
-        code += &format!(
-            "return crate::PoseidonParameters::new(
-            ark,
-            mds,
-            FULL_ROUNDS,
-            PARTIAL_ROUNDS[{}],
-            t.into(),
-            ALPHA,
-            );\n",
-            t - 2
-        );
+        if t < MAX_SOLANA_LIMIT {
+            code += &format!(
+                "return Ok(crate::PoseidonParameters::new(
+                ark,
+                mds,
+                FULL_ROUNDS,
+                PARTIAL_ROUNDS[{}],
+                t.into(),
+                ALPHA,
+                ));\n",
+                t - 2
+            );
+        } else {
+            code += &format!(
+                "#[cfg(feature = \"solana\")]
+                return Err(PoseidonError::InvalidWidthCircom {{
+                    width: {} as usize,
+                    max_limit: 13usize,
+                }});\n",
+                t
+            );
+
+            code += &format!(
+                "
+                #[cfg(not(feature = \"solana\"))]
+                return Ok(crate::PoseidonParameters::new(
+                ark,
+                mds,
+                FULL_ROUNDS,
+                PARTIAL_ROUNDS[{}],
+                t.into(),
+                ALPHA,
+                ));\n",
+                t - 2
+            );
+        }
         code += "\t}\n";
     }
     code += "else {
-        unimplemented!();
+        #[cfg(not(feature = \"solana\"))]
+        return Err(PoseidonError::InvalidWidthCircom {
+            width: t as usize,
+            max_limit: 15usize,
+        });
+        #[cfg(feature = \"solana\")]
+        return Err(PoseidonError::InvalidWidthCircom {
+            width: t as usize,
+            max_limit: 12usize,
+        });\n
     }";
     code += "}\n";
 

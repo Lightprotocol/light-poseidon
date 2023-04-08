@@ -10,7 +10,7 @@ license = "Apache-2.0"
 edition = "2021"
 
 [features]
-# limits the width of poseidon paramters to 12
+# limits the width of poseidon paramters to 13 (12 inputs)
 solana = []
 
 [dependencies]

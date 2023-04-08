@@ -177,7 +177,7 @@ fn test_circom_1_to_12_inputs() {
     }
 }
 
-#[cfg(not(feature = "solana"))]
+#[cfg(not(feature = "width_limit_13"))]
 #[test]
 fn test_circom_13_to_15_inputs() {
     let mut inputs = Vec::new();
@@ -201,7 +201,7 @@ fn test_circom_13_to_15_inputs() {
     }
 }
 
-#[cfg(feature = "solana")]
+#[cfg(feature = "width_limit_13")]
 #[test]
 fn test_circom_solana_t_gt_12_fails() {
     use light_poseidon::PoseidonError;
@@ -222,7 +222,7 @@ fn test_circom_solana_t_gt_12_fails() {
         }
     }
 }
-#[cfg(not(feature = "solana"))]
+#[cfg(not(feature = "width_limit_13"))]
 #[test]
 fn test_circom_t_0_fails() {
     use light_poseidon::PoseidonError;
@@ -237,7 +237,7 @@ fn test_circom_t_0_fails() {
         );
     }
 }
-#[cfg(feature = "solana")]
+#[cfg(feature = "width_limit_13")]
 #[test]
 fn test_circom_t_0_fails() {
     use light_poseidon::PoseidonError;

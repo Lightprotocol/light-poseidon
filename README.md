@@ -15,8 +15,8 @@ of generating the round constants.
 Parameters provided by the library are:
 
 * x^5 S-boxes
-* t = 2 - 17 (for 1 to 16 inputs)
-* 8 full rounds and partial rounds depending on t [56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65, 70, 60, 64, 68]
+* t = 2 - 17 (for 1 to 15 inputs)
+* 8 full rounds and partial rounds depending on t [56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65, 70, 60, 64]
 
 The parameters can be generated with:
 ```$ cargo xtask generate-poseidon-parameters``
@@ -89,7 +89,7 @@ but it was also inspired by the following ones:
 ### Performance
 
 This repository contains a benchmark measuring the performance of this
-Poseidon implementation for given 1 - 16 random 32 bytes inputs.
+Poseidon implementation for given 1 - 15 random 32 bytes inputs.
 
 To run them, simply use:
 

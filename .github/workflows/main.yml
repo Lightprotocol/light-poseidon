@@ -69,3 +69,9 @@ jobs:
         with:
           command: clippy
           args: -- -D warnings
+
+      - name: Check README
+        uses: actions-rs/cargo@v1
+        with:
+          command: xtask
+          args: generate-readme --check

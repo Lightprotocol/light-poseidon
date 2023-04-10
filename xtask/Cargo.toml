@@ -6,5 +6,6 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
+cargo-readme = "3.2"
 clap = { version = "4", features = ["derive"] }
 hex = "0.4.3"

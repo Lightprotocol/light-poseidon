@@ -44,14 +44,11 @@ fn rustfmt(code: String) -> Result<Vec<u8>, anyhow::Error> {
 }
 use std::path::Path;
 
-const MAX_SOLANA_LIMIT: usize = 14;
 const FIELD: &str = "1";
 const SBOX: &str = "0";
 const FIELD_ELEMENT_BIT_SIZE: &str = "254";
 const FULL_ROUNDS: &str = "8";
-const PARTIAL_ROUNDS: [u8; 16] = [
-    56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65, 70, 60, 64, 68,
-];
+const PARTIAL_ROUNDS: [u8; 12] = [56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65];
 const MODULUS_HEX: &str = "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
 #[allow(clippy::needless_return)]
 pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
@@ -78,7 +75,7 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
             .output()
             .map_err(|e| anyhow::format_err!("mkdir failed: {}", e.to_string()))?;
     }
-    for i in 2..17 {
+    for i in 2..14 {
         let path = format!("./target/params/poseidon_params_bn254_x5_{}", i);
 
         if !Path::new(&path).exists() {
@@ -142,18 +139,12 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
     #[allow(unused_variables)]
     pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInteger256>>(t: u8) -> Result<PoseidonParameters<F>, PoseidonError> {
     if t == 0_u8 {
-        #[cfg(not(feature = \"width_limit_13\"))]
-        return Err(PoseidonError::InvalidWidthCircom {
-            width: t as usize,
-            max_limit: 16usize,
-        });
-        #[cfg(feature = \"width_limit_13\")]
         return Err(PoseidonError::InvalidWidthCircom {
             width: t as usize,
             max_limit: 13usize,
         });\n
     }\n";
-    for t in 2..17 {
+    for t in 2..14 {
         let path = format!("./target/params/poseidon_params_bn254_x5_{}", t);
         let mut file = File::open(path)?;
         let mut contents = String::new();
@@ -218,51 +209,21 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
                 code += &String::from("\t\t];\n");
             }
         }
-        if t < MAX_SOLANA_LIMIT {
-            code += &format!(
-                "return Ok(crate::PoseidonParameters::new(
-                ark,
-                mds,
-                FULL_ROUNDS,
-                PARTIAL_ROUNDS[{}],
-                t.into(),
-                ALPHA,
-                ));\n",
-                t - 2
-            );
-        } else {
-            code += &format!(
-                "#[cfg(feature = \"width_limit_13\")]
-                return Err(PoseidonError::InvalidWidthCircom {{
-                    width: {} as usize,
-                    max_limit: 13usize,
-                }});\n",
-                t
-            );
+        code += &format!(
+            "return Ok(crate::PoseidonParameters::new(
+            ark,
+            mds,
+            FULL_ROUNDS,
+            PARTIAL_ROUNDS[{}],
+            t.into(),
+            ALPHA,
+            ));\n",
+            t - 2
+        );
 
-            code += &format!(
-                "
-                #[cfg(not(feature = \"width_limit_13\"))]
-                return Ok(crate::PoseidonParameters::new(
-                ark,
-                mds,
-                FULL_ROUNDS,
-                PARTIAL_ROUNDS[{}],
-                t.into(),
-                ALPHA,
-                ));\n",
-                t - 2
-            );
-        }
         code += "\t}\n";
     }
     code += "else {
-        #[cfg(not(feature = \"width_limit_13\"))]
-        return Err(PoseidonError::InvalidWidthCircom {
-            width: t as usize,
-            max_limit: 16usize,
-        });
-        #[cfg(feature = \"width_limit_13\")]
         return Err(PoseidonError::InvalidWidthCircom {
             width: t as usize,
             max_limit: 13usize,

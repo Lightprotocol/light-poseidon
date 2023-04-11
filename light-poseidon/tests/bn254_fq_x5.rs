@@ -90,7 +90,7 @@ fn test_poseidon_bn254_x5_fq_hash_bytes() {
 }
 
 // test cases were created with circomlibjs poseidon([1, ...]) for 1 to 16 inputs
-const TEST_CASES: [[u8; 32]; 15] = [
+const TEST_CASES: [[u8; 32]; 12] = [
     [
         41, 23, 97, 0, 234, 169, 98, 189, 193, 254, 108, 101, 77, 106, 60, 19, 14, 150, 164, 209,
         22, 139, 51, 132, 139, 137, 125, 197, 2, 130, 1, 51,
@@ -139,18 +139,6 @@ const TEST_CASES: [[u8; 32]; 15] = [
         20, 57, 11, 224, 186, 239, 36, 155, 212, 124, 101, 221, 172, 101, 194, 229, 46, 133, 19,
         192, 129, 193, 205, 114, 201, 128, 6, 9, 142, 154, 143, 190,
     ],
-    [
-        46, 189, 128, 161, 169, 134, 85, 62, 67, 87, 243, 70, 211, 225, 145, 254, 148, 6, 253, 243,
-        71, 34, 120, 31, 232, 83, 111, 99, 230, 198, 92, 108,
-    ],
-    [
-        38, 42, 196, 73, 28, 210, 208, 129, 149, 54, 79, 247, 165, 12, 238, 56, 66, 117, 50, 113,
-        188, 114, 50, 216, 85, 147, 150, 58, 127, 104, 233, 221,
-    ],
-    [
-        27, 225, 209, 175, 237, 11, 90, 129, 139, 218, 5, 21, 20, 49, 65, 35, 218, 22, 99, 154,
-        152, 243, 138, 136, 36, 39, 1, 149, 158, 199, 205, 61,
-    ],
 ];
 
 #[test]
@@ -173,31 +161,6 @@ fn test_circom_1_to_12_inputs() {
     }
 }
 
-#[cfg(not(feature = "width_limit_13"))]
-#[test]
-fn test_circom_13_to_15_inputs() {
-    let mut inputs = Vec::new();
-    let value = [vec![0u8; 31], vec![1u8]].concat();
-    for _ in 1..13 {
-        inputs.push(value.as_slice());
-    }
-    for i in 13..16 {
-        inputs.push(value.as_slice());
-        let mut hasher = Poseidon::<Fr>::new_circom(i).unwrap();
-        let hash = hasher.hash_bytes(&inputs[..]).unwrap();
-        assert_eq!(hash, TEST_CASES[i - 1]);
-    }
-    let mut inputs = Vec::new();
-    let value = [vec![0u8; 31], vec![2u8]].concat();
-    for i in 13..16 {
-        inputs.push(value.as_slice());
-        let mut hasher = Poseidon::<Fr>::new_circom(i).unwrap();
-        let hash = hasher.hash_bytes(&inputs[..]).unwrap();
-        assert!(hash != TEST_CASES[i - 1]);
-    }
-}
-
-#[cfg(feature = "width_limit_13")]
 #[test]
 fn test_circom_solana_t_gt_12_fails() {
     use light_poseidon::PoseidonError;
@@ -218,22 +181,7 @@ fn test_circom_solana_t_gt_12_fails() {
         }
     }
 }
-#[cfg(not(feature = "width_limit_13"))]
-#[test]
-fn test_circom_t_0_fails() {
-    use light_poseidon::PoseidonError;
-    let hasher = Poseidon::<Fr>::new_circom(0);
-    unsafe {
-        assert_eq!(
-            hasher.unwrap_err_unchecked(),
-            PoseidonError::InvalidWidthCircom {
-                width: 1,
-                max_limit: 16
-            }
-        );
-    }
-}
-#[cfg(feature = "width_limit_13")]
+
 #[test]
 fn test_circom_t_0_fails() {
     use light_poseidon::PoseidonError;

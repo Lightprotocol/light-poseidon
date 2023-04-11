@@ -9,10 +9,6 @@ keywords = ["cryptography", "hash", "poseidon", "zero-knowledge", "zkSNARK"]
 license = "Apache-2.0"
 edition = "2021"
 
-[features]
-# limits the width of poseidon paramters to 13 (12 inputs)
-width_limit_13 = []
-
 [dependencies]
 ark-bn254 = "0.4.0"
 

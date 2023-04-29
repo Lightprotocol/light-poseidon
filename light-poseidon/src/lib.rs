@@ -146,6 +146,8 @@ pub enum PoseidonError {
     U64Tou8,
     #[error("Selected width is invalid, select a width between 2 and 16, for 1 to 15 inputs.")]
     InvalidWidthCircom { width: usize, max_limit: usize },
+    #[error("Failed to deserialize a prime field element from bytes")]
+    DeserializePrimeFieldElement,
 }
 
 /// Parameters for the Poseidon hash algorithm.
@@ -223,8 +225,8 @@ pub trait PoseidonHasher<F: PrimeField> {
 }
 
 pub trait PoseidonBytesHasher {
-    /// Calculates a Poseidon hash for the given input of byte slices and
-    /// returns the result as a byte array.
+    /// Calculates a Poseidon hash for the given input of big-endian byte slices
+    /// and returns the result as a byte array.
     ///
     /// Poseidon prepends a zero prime field at the beginning of the state,
     /// appends the given `input` and then, if the length of the state is
@@ -248,16 +250,46 @@ pub trait PoseidonBytesHasher {
     ///
     /// let mut poseidon = Poseidon::<Fr>::new_circom(2).unwrap();
     ///
-    /// let hash = poseidon.hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
-    ///
-    /// println!("{:?}", hash);
-    /// // Should print:
-    /// // [
-    /// //     13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123, 132,
-    /// //     254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
-    /// // ]
+    /// let hash = poseidon.hash_be_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
+    /// assert_eq!(hash, [
+    ///     13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123, 132,
+    ///     254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
+    /// ]);
     /// ```
-    fn hash_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError>;
+    fn hash_be_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError>;
+
+    /// Calculates a Poseidon hash for the given input of little-endian byte
+    /// slices and returns the result as a byte array.
+    ///
+    /// Poseidon prepends a zero prime field at the beginning of the state,
+    /// appends the given `input` and then, if the length of the state is
+    /// still smaller than the width of the state, it appends zero prime
+    /// fields at the end of the state until they are equal.
+    ///
+    /// Therefore `inputs` argument cannot be larger than the number of prime
+    /// fields in the state - 1. To be precise, the undesirable condition is
+    /// `inputs.len() > self.params.width - 1`. Providing such `input` will
+    /// result in an error.
+    ///
+    /// # Examples
+    ///
+    /// Example with two simple little-endian byte inputs and BN254-based
+    /// parameters provided by the library.
+    ///
+    /// ```rust
+    /// use light_poseidon::{Poseidon, PoseidonBytesHasher, parameters::bn254_x5};
+    /// use ark_bn254::Fr;
+    /// use ark_ff::{BigInteger, PrimeField};
+    ///
+    /// let mut poseidon = Poseidon::<Fr>::new_circom(2).unwrap();
+    ///
+    /// let hash = poseidon.hash_le_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
+    /// assert_eq!(hash, [
+    ///     13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123, 132,
+    ///     254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
+    /// ]);
+    /// ```
+    fn hash_le_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError>;
 }
 
 /// A stateful sponge performing Poseidon hash computation.
@@ -360,11 +392,29 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
 }
 
 impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
-    fn hash_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
-        let inputs: Vec<F> = inputs
-            .iter()
-            .map(|bytes| F::from_be_bytes_mod_order(bytes))
-            .collect();
+    fn hash_be_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
+        let mut vec_inputs: Vec<&[u8]> = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            let mut vec_input = input.to_vec();
+            vec_input.reverse();
+            vec_inputs.push(vec_input.as_slice());
+        }
+        self.hash_be_bytes(vec_inputs.as_slice())
+    }
+
+    fn hash_le_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
+        let inputs =
+            inputs
+                .iter()
+                .try_fold(Vec::with_capacity(inputs.len()), |mut acc, input| {
+                    match F::from_random_bytes(input) {
+                        Some(f) => {
+                            acc.push(f);
+                            Ok(acc)
+                        }
+                        None => Err(PoseidonError::DeserializePrimeFieldElement),
+                    }
+                })?;
         let hash = self.hash(&inputs)?;
 
         hash.into_bigint()

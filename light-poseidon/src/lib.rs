@@ -134,10 +134,10 @@ pub const MAX_X5_LEN: usize = 16;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum PoseidonError {
-    #[error("Invalid number of inputs: {inputs}, the maximum limit is {max_limit} ({width} - 1)")]
+    #[error("Invalid number of inputs: {inputs}, the expected number is {expected} ({width} - 1)")]
     InvalidNumberOfInputs {
         inputs: usize,
-        max_limit: usize,
+        expected: usize,
         width: usize,
     },
     #[error("Failed to convert a vector of bytes into an array")]
@@ -154,39 +154,15 @@ pub struct PoseidonParameters<F: PrimeField> {
     pub ark: Vec<F>,
     /// MDS matrix.
     pub mds: Vec<Vec<F>>,
-    /// Number of full rounds (where S-box is applied to all elements of the
-    /// state).
-    pub full_rounds: usize,
-    /// Number of partial rounds (where S-box is applied only to the first
-    /// element of the state).
-    pub partial_rounds: usize,
-    /// Number of prime fields in the state.
-    pub width: usize,
-    /// Exponential used in S-box to power elements of the state.
-    pub alpha: u64,
 }
 
 impl<F: PrimeField> PoseidonParameters<F> {
-    pub fn new(
-        ark: Vec<F>,
-        mds: Vec<Vec<F>>,
-        full_rounds: usize,
-        partial_rounds: usize,
-        width: usize,
-        alpha: u64,
-    ) -> Self {
-        Self {
-            ark,
-            mds,
-            full_rounds,
-            partial_rounds,
-            width,
-            alpha,
-        }
+    pub fn new(ark: Vec<F>, mds: Vec<Vec<F>>) -> Self {
+        Self { ark, mds }
     }
 }
 
-pub trait PoseidonHasher<F: PrimeField> {
+pub trait PoseidonHasher<F: PrimeField, const INPUTS: usize> {
     /// Calculates a Poseidon hash for the given input of prime fields and
     /// returns the result as a prime field.
     ///
@@ -219,10 +195,10 @@ pub trait PoseidonHasher<F: PrimeField> {
     ///
     /// // Do something with `hash`.
     /// ```
-    fn hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError>;
+    fn hash(&mut self, inputs: &[F; INPUTS]) -> Result<F, PoseidonError>;
 }
 
-pub trait PoseidonBytesHasher {
+pub trait PoseidonBytesHasher<const INPUTS: usize> {
     /// Calculates a Poseidon hash for the given input of byte slices and
     /// returns the result as a byte array.
     ///
@@ -257,29 +233,52 @@ pub trait PoseidonBytesHasher {
     /// //     254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
     /// // ]
     /// ```
-    fn hash_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError>;
+    fn hash_bytes(&mut self, inputs: &[&[u8]; INPUTS]) -> Result<[u8; HASH_LEN], PoseidonError>;
 }
 
 /// A stateful sponge performing Poseidon hash computation.
-pub struct Poseidon<F: PrimeField> {
+///
+/// It takes the following parameters defined as const generics:
+///
+/// * `WIDTH` - number of prime field elements in the state.
+/// * `ALPHA` - exponent used in S-box to power elements of the state.
+/// * `FULL_ROUNDS` - number of full rounds (where S-box is applied to all
+///    elements of the state).
+/// * `PARTIAL_ROUNDS` - number of partial rounds (where S-box is applied only
+///    to the first element of the state).
+pub struct Poseidon<
+    F: PrimeField,
+    const WIDTH: usize,
+    const INPUTS: usize,
+    const ALPHA: u64,
+    const FULL_ROUNDS: usize,
+    const PARTIAL_ROUNDS: usize,
+> {
     params: PoseidonParameters<F>,
-    state: Vec<F>,
+    state: [F; WIDTH],
 }
 
-impl<F: PrimeField> Poseidon<F> {
+impl<
+        F: PrimeField,
+        const WIDTH: usize,
+        const INPUTS: usize,
+        const ALPHA: u64,
+        const FULL_ROUNDS: usize,
+        const PARTIAL_ROUNDS: usize,
+    > Poseidon<F, WIDTH, INPUTS, ALPHA, FULL_ROUNDS, PARTIAL_ROUNDS>
+{
     /// Returns a new Poseidon hasher based on the given parameters.
     pub fn new(params: PoseidonParameters<F>) -> Self {
-        let width = params.width;
         Self {
             params,
-            state: Vec::with_capacity(width),
+            state: [F::zero(); WIDTH],
         }
     }
 
     #[inline(always)]
     fn apply_ark(&mut self, round: usize) {
         self.state.iter_mut().enumerate().for_each(|(i, a)| {
-            let c = self.params.ark[round * self.params.width + i];
+            let c = self.params.ark[round * WIDTH + i];
             *a += c;
         });
     }
@@ -287,52 +286,50 @@ impl<F: PrimeField> Poseidon<F> {
     #[inline(always)]
     fn apply_sbox_full(&mut self) {
         self.state.iter_mut().for_each(|a| {
-            *a = a.pow([self.params.alpha]);
+            *a = a.pow([ALPHA]);
         });
     }
 
     #[inline(always)]
     fn apply_sbox_partial(&mut self) {
-        self.state[0] = self.state[0].pow([self.params.alpha]);
+        self.state[0] = self.state[0].pow([ALPHA]);
     }
 
     #[inline(always)]
     fn apply_mds(&mut self) {
-        self.state = self
-            .state
-            .iter()
-            .enumerate()
-            .map(|(i, _)| {
-                self.state
-                    .iter()
-                    .enumerate()
-                    .fold(F::zero(), |acc, (j, a)| acc + *a * self.params.mds[i][j])
-            })
-            .collect();
+        for i in 0..WIDTH {
+            self.state[i] = self
+                .state
+                .iter()
+                .enumerate()
+                .fold(F::zero(), |acc, (j, a)| acc + *a * self.params.mds[i][j]);
+        }
+    }
+
+    #[inline(always)]
+    fn clear(&mut self) {
+        self.state = [F::zero(); WIDTH];
     }
 }
 
-impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
-    fn hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError> {
-        if inputs.len() > self.params.width - 1 {
-            return Err(PoseidonError::InvalidNumberOfInputs {
-                inputs: inputs.len(),
-                max_limit: self.params.width - 1,
-                width: self.params.width,
-            });
+impl<
+        F: PrimeField,
+        const WIDTH: usize,
+        const INPUTS: usize,
+        const ALPHA: u64,
+        const FULL_ROUNDS: usize,
+        const PARTIAL_ROUNDS: usize,
+    > PoseidonHasher<F, INPUTS> for Poseidon<F, WIDTH, INPUTS, ALPHA, FULL_ROUNDS, PARTIAL_ROUNDS>
+{
+    fn hash(&mut self, inputs: &[F; INPUTS]) -> Result<F, PoseidonError> {
+        // self.state[0] = F::zero();
+
+        for (i, input) in inputs.iter().enumerate() {
+            self.state[i + 1] = *input;
         }
 
-        self.state.push(F::zero());
-
-        for input in inputs {
-            self.state.push(*input);
-        }
-        while self.state.len() < self.params.width {
-            self.state.push(F::zero());
-        }
-
-        let all_rounds = self.params.full_rounds + self.params.partial_rounds;
-        let half_rounds = self.params.full_rounds / 2;
+        let all_rounds = FULL_ROUNDS + PARTIAL_ROUNDS;
+        let half_rounds = FULL_ROUNDS / 2;
 
         // full rounds + partial rounds
         for round in 0..half_rounds {
@@ -341,31 +338,40 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
             self.apply_mds();
         }
 
-        for round in half_rounds..half_rounds + self.params.partial_rounds {
+        for round in half_rounds..half_rounds + PARTIAL_ROUNDS {
             self.apply_ark(round);
             self.apply_sbox_partial();
             self.apply_mds();
         }
 
-        for round in half_rounds + self.params.partial_rounds..all_rounds {
+        for round in half_rounds + PARTIAL_ROUNDS..all_rounds {
             self.apply_ark(round);
             self.apply_sbox_full();
             self.apply_mds();
         }
 
         let result = self.state[0];
-        self.state.clear();
+        self.clear();
         Ok(result)
     }
 }
 
-impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
-    fn hash_bytes(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
-        let inputs: Vec<F> = inputs
-            .iter()
-            .map(|bytes| F::from_be_bytes_mod_order(bytes))
-            .collect();
-        let hash = self.hash(&inputs)?;
+impl<
+        F: PrimeField,
+        const WIDTH: usize,
+        const INPUTS: usize,
+        const ALPHA: u64,
+        const FULL_ROUNDS: usize,
+        const PARTIAL_ROUNDS: usize,
+    > PoseidonBytesHasher<INPUTS>
+    for Poseidon<F, WIDTH, INPUTS, ALPHA, FULL_ROUNDS, PARTIAL_ROUNDS>
+{
+    fn hash_bytes(&mut self, inputs: &[&[u8]; INPUTS]) -> Result<[u8; HASH_LEN], PoseidonError> {
+        let mut decoded_inputs: [F; INPUTS] = [F::zero(); INPUTS];
+        for (i, input) in inputs.iter().enumerate() {
+            decoded_inputs[i] = F::from_be_bytes_mod_order(input);
+        }
+        let hash = self.hash(&decoded_inputs)?;
 
         hash.into_bigint()
             .to_bytes_be()
@@ -374,8 +380,19 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
     }
 }
 
-impl<F: PrimeField> Poseidon<F> {
-    pub fn new_circom(nr_inputs: usize) -> Result<Poseidon<Fr>, PoseidonError> {
+impl<
+        F: PrimeField,
+        const WIDTH: usize,
+        const INPUTS: usize,
+        const ALPHA: u64,
+        const FULL_ROUNDS: usize,
+        const PARTIAL_ROUNDS: usize,
+    > Poseidon<F, WIDTH, INPUTS, ALPHA, FULL_ROUNDS, PARTIAL_ROUNDS>
+{
+    pub fn new_circom(
+        nr_inputs: usize,
+    ) -> Result<Poseidon<Fr, WIDTH, INPUTS, ALPHA, FULL_ROUNDS, PARTIAL_ROUNDS>, PoseidonError>
+    {
         let width = nr_inputs + 1;
         if width > MAX_X5_LEN {
             return Err(PoseidonError::InvalidWidthCircom {
@@ -387,6 +404,13 @@ impl<F: PrimeField> Poseidon<F> {
         let params = crate::parameters::bn254_x5::get_poseidon_parameters::<Fr>(
             (width).try_into().map_err(|_| PoseidonError::U64Tou8)?,
         )?;
-        Ok(Poseidon::<Fr>::new(params))
+        Ok(Poseidon::<
+            Fr,
+            WIDTH,
+            INPUTS,
+            ALPHA,
+            FULL_ROUNDS,
+            PARTIAL_ROUNDS,
+        >::new(params))
     }
 }

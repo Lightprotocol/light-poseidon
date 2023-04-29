@@ -1,5 +1,5 @@
 use ark_bn254::Fr;
-use ark_ff::{BigInteger, PrimeField};
+use ark_ff::{BigInteger, PrimeField, Zero};
 use light_poseidon::Poseidon;
 use light_poseidon::{PoseidonBytesHasher, PoseidonHasher};
 
@@ -61,7 +61,24 @@ fn test_poseidon_bn254_x5_fq_input_random() {
 }
 
 #[test]
-fn test_poseidon_bn254_x5_fq_input_invalid() {
+fn test_poseidon_bn254_x5_fq_input_too_small() {
+    let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
+    // Provide only one input when two are expected.
+    assert!(hasher
+        .hash(&[Fr::from_be_bytes_mod_order(&[1u8; 32])])
+        .is_err());
+}
+
+#[test]
+fn test_poseidon_bn254_x5_fq_input_explicit_padding() {
+    let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
+    assert!(hasher
+        .hash(&[Fr::from_be_bytes_mod_order(&[1u8; 32]), Fr::zero()])
+        .is_ok());
+}
+
+#[test]
+fn test_poseidon_bn254_x5_fq_input_too_large() {
     let mut vec = Vec::new();
     for _ in 0..17 {
         vec.push(Fr::from_be_bytes_mod_order(&[1u8; 32]));

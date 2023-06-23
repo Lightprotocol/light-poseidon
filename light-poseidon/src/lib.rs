@@ -314,7 +314,7 @@ impl<F: PrimeField> Poseidon<F> {
 
 impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
     fn hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError> {
-        if inputs.len() > self.params.width - 1 {
+        if inputs.len() != self.params.width - 1 {
             return Err(PoseidonError::InvalidNumberOfInputs {
                 inputs: inputs.len(),
                 max_limit: self.params.width - 1,
@@ -326,9 +326,6 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
 
         for input in inputs {
             self.state.push(*input);
-        }
-        while self.state.len() < self.params.width {
-            self.state.push(F::zero());
         }
 
         let all_rounds = self.params.full_rounds + self.params.partial_rounds;

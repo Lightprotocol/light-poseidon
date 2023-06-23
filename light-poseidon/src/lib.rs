@@ -124,7 +124,7 @@
 //! poseidon_bn254_x5_12    time:   [295.47 µs 305.80 µs 316.41 µs]
 //! ```
 use ark_bn254::Fr;
-use ark_ff::{BigInteger, PrimeField};
+use ark_ff::{BigInteger, PrimeField, Zero};
 use thiserror::Error;
 
 pub mod parameters;
@@ -263,14 +263,23 @@ pub trait PoseidonBytesHasher {
 /// A stateful sponge performing Poseidon hash computation.
 pub struct Poseidon<F: PrimeField> {
     params: PoseidonParameters<F>,
+    domain_tag: F,
     state: Vec<F>,
 }
 
 impl<F: PrimeField> Poseidon<F> {
     /// Returns a new Poseidon hasher based on the given parameters.
+    ///
+    /// Optionally, a domain tag can be provided. If it is not provided, it
+    /// will be set to zero.
     pub fn new(params: PoseidonParameters<F>) -> Self {
+        Self::with_domain_tag(params, F::zero())
+    }
+
+    fn with_domain_tag(params: PoseidonParameters<F>, domain_tag: F) -> Self {
         let width = params.width;
         Self {
+            domain_tag,
             params,
             state: Vec::with_capacity(width),
         }
@@ -322,7 +331,7 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
             });
         }
 
-        self.state.push(F::zero());
+        self.state.push(self.domain_tag);
 
         for input in inputs {
             self.state.push(*input);
@@ -376,6 +385,13 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
 
 impl<F: PrimeField> Poseidon<F> {
     pub fn new_circom(nr_inputs: usize) -> Result<Poseidon<Fr>, PoseidonError> {
+        Self::with_domain_tag_circom(nr_inputs, Fr::zero())
+    }
+
+    pub fn with_domain_tag_circom(
+        nr_inputs: usize,
+        domain_tag: Fr,
+    ) -> Result<Poseidon<Fr>, PoseidonError> {
         let width = nr_inputs + 1;
         if width > MAX_X5_LEN {
             return Err(PoseidonError::InvalidWidthCircom {
@@ -387,6 +403,6 @@ impl<F: PrimeField> Poseidon<F> {
         let params = crate::parameters::bn254_x5::get_poseidon_parameters::<Fr>(
             (width).try_into().map_err(|_| PoseidonError::U64Tou8)?,
         )?;
-        Ok(Poseidon::<Fr>::new(params))
+        Ok(Poseidon::<Fr>::with_domain_tag(params, domain_tag))
     }
 }

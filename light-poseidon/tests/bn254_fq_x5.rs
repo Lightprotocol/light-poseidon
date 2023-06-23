@@ -1,5 +1,5 @@
 use ark_bn254::Fr;
-use ark_ff::{BigInteger, PrimeField};
+use ark_ff::{BigInteger, One, PrimeField, Zero};
 use light_poseidon::Poseidon;
 use light_poseidon::{PoseidonBytesHasher, PoseidonHasher};
 
@@ -17,6 +17,26 @@ fn test_poseidon_bn254_x5_fq_input_ones_twos() {
             254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
         ]
     );
+}
+
+#[test]
+fn test_poseidon_bn254_x5_fq_with_domain_tag() {
+    let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
+    let input2 = Fr::from_be_bytes_mod_order(&[2u8; 32]);
+    let mut hasher = Poseidon::<Fr>::with_domain_tag_circom(2, Fr::zero()).unwrap();
+    let hash = hasher.hash(&[input1, input2]).unwrap();
+
+    let expected_tag_zero = [
+        13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123, 132, 254,
+        156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144,
+    ];
+
+    assert_eq!(hash.into_bigint().to_bytes_be(), expected_tag_zero);
+
+    let mut hasher = Poseidon::<Fr>::with_domain_tag_circom(2, Fr::one()).unwrap();
+    let hash = hasher.hash(&[input1, input2]).unwrap();
+
+    assert_ne!(hash.into_bigint().to_bytes_be(), expected_tag_zero);
 }
 
 #[test]

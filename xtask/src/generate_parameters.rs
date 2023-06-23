@@ -139,10 +139,10 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
     #[allow(unused_variables)]
     pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInteger256>>(t: u8) -> Result<PoseidonParameters<F>, PoseidonError> {
     if t == 0_u8 {
-        return Err(PoseidonError::InvalidWidthCircom {
+        Err(PoseidonError::InvalidWidthCircom {
             width: t as usize,
             max_limit: 13usize,
-        });\n
+        })\n
     }\n";
     for t in 2..14 {
         let path = format!("./target/params/poseidon_params_bn254_x5_{}", t);

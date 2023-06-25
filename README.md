@@ -47,7 +47,7 @@ use ark_ff::{BigInteger, PrimeField};
 
 let mut poseidon = Poseidon::<Fr>::new_circom(2).unwrap();
 
-let hash = poseidon.hash_bytes(&[&[1u8; 32], &[2u8; 32]]).unwrap();
+let hash = poseidon.hash_bytes_be(&[&[1u8; 32], &[2u8; 32]]).unwrap();
 
 println!("{:?}", hash);
 // Should print:

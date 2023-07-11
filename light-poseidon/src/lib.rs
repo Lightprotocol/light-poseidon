@@ -144,7 +144,7 @@ pub enum PoseidonError {
     InputLargerThanModulus,
     #[error("Failed to convert a vector of bytes into an array")]
     VecToArray,
-    #[error("Failed to convert a the number of inputs to a u8")]
+    #[error("Failed to convert the number of inputs to a u8")]
     U64Tou8,
     #[error("Selected width is invalid, select a width between 2 and 16, for 1 to 15 inputs.")]
     InvalidWidthCircom { width: usize, max_limit: usize },

@@ -123,6 +123,11 @@
 //!
 //! poseidon_bn254_x5_12    time:   [295.47 µs 305.80 µs 316.41 µs]
 //! ```
+//!
+//! # Security
+//!
+//! This library has been audited by [Veridise](https://veridise.com/). You can
+//! read the audit report [here](https://github.com/Lightprotocol/light-poseidon/blob/main/assets/audit.pdf).
 use ark_bn254::Fr;
 use ark_ff::{BigInteger, PrimeField, Zero};
 use thiserror::Error;

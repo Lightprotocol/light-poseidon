@@ -129,6 +129,11 @@ poseidon_bn254_x5_11    time:   [239.47 µs 249.05 µs 258.35 µs]
 poseidon_bn254_x5_12    time:   [295.47 µs 305.80 µs 316.41 µs]
 ```
 
+## Security
+
+This library has been audited by [Veridise](https://veridise.com/). You can
+read the audit report [here](https://github.com/Lightprotocol/light-poseidon/blob/main/assets/audit.pdf).
+
 ## License
 
 Licensed under [Apache License, Version 2.0](LICENSE).

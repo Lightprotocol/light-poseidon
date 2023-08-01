@@ -3,6 +3,8 @@
 
 # light-poseidon
 
+<!-- cargo-rdme start -->
+
 **light-poseidon** is a [Poseidon](https://eprint.iacr.org/2019/458) hash
 implementation in Rust created for [Light Protocol](https://www.lightprotocol.com/).
 
@@ -25,26 +27,23 @@ The parameters can be generated with:
 cargo xtask generate-poseidon-parameters
 ````
 
-# Output type
+## Output type
 
-[`Poseidon`](crate::Poseidon) type implements two traits which serve the purpose
+[`Poseidon`](https://docs.rs/light-poseidon/latest/light_poseidon/struct.Poseidon.html) type implements two traits which serve the purpose
 of returning the calculated hash in different representations:
 
-* [`PoseidonBytesHasher`](crate::PoseidonBytesHasher) with the
-  [`hash_bytes_be`](crate::PoseidonBytesHasher::hash_bytes_be) and
-  [`hash_bytes_le`](crate::PoseidonBytesHasher::hash_bytes_le) methods which
-  returns a byte array.
-* [`PoseidonHasher`](crate::PoseidonHasher) with the
-  [`hash`](crate::PoseidonHasher::hash) method which returns
+* [`PoseidonBytesHasher`](https://docs.rs/light-poseidon/latest/light_poseidon/trait.PoseidonBytesHasher.html) with the
+  `hash_bytes_be` and `hash_bytes_le` methods which returns a byte array.
+* [`PoseidonHasher`](https://docs.rs/light-poseidon/latest/light_poseidon/trait.PoseidonHasher.html) with the `hash` method which returns
   [`ark_ff::PrimeField`](ark_ff::PrimeField). Might be useful if you want
   to immediately process the result with an another library which works with
   [`ark_ff::PrimeField`](ark_ff::PrimeField) types.
 
-# Examples
+## Examples
 
 Example with two simple big-endian byte inputs (converted to field elements)
 and BN254-based parameters provided by the library, with
-[`PoseidonBytesHasher`](crate::PoseidonHasher) trait and a byte array
+[`PoseidonBytesHasher`](https://docs.rs/light-poseidon/latest/light_poseidon/trait.PoseidonHasher.html) trait and a byte array
 result:
 
 ```rust
@@ -64,7 +63,7 @@ println!("{:?}", hash);
 // ]
 ```
 
-With [`PoseidonHasher`][crate::PoseidonHasher] trait and
+With [`PoseidonHasher`](https://docs.rs/light-poseidon/latest/light_poseidon/trait.PoseidonHasher.html) trait and
 [`ark_ff::PrimeField`](ark_ff::PrimeField) result:
 
 ```rust
@@ -91,7 +90,7 @@ but it was also inspired by the following ones:
 * [circomlibjs](https://github.com/iden3/circomlibjs)
 * [zero-knowledge-gadgets](https://github.com/webb-tools/zero-knowledge-gadgets)
 
-### Performance
+## Performance
 
 This repository contains a benchmark measuring the performance of this
 Poseidon implementation for given 1 - 12 random 32 bytes inputs.
@@ -141,13 +140,4 @@ poseidon_bn254_x5_12    time:   [295.47 µs 305.80 µs 316.41 µs]
 This library has been audited by [Veridise](https://veridise.com/). You can
 read the audit report [here](https://github.com/Lightprotocol/light-poseidon/blob/main/assets/audit.pdf).
 
-## License
-
-Licensed under [Apache License, Version 2.0](LICENSE).
-
-### Contribution
-
-Unless you explicitly state otherwise, any contribution intentionally
-submitted for inclusion in the work by you, as defined in the Apache-2.0
-license, shall be dual licensed as above, without any additional terms or
-conditions.
+<!-- cargo-rdme end -->

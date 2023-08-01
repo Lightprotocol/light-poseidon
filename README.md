@@ -31,7 +31,8 @@ cargo xtask generate-poseidon-parameters
 of returning the calculated hash in different representations:
 
 * [`PoseidonBytesHasher`](crate::PoseidonBytesHasher) with the
-  [`hash_bytes`](crate::PoseidonBytesHasher::hash_bytes) method which
+  [`hash_bytes_be`](crate::PoseidonBytesHasher::hash_bytes_be) and
+  [`hash_bytes_le`](crate::PoseidonBytesHasher::hash_bytes_le) methods which
   returns a byte array.
 * [`PoseidonHasher`](crate::PoseidonHasher) with the
   [`hash`](crate::PoseidonHasher::hash) method which returns

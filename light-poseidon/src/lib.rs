@@ -26,10 +26,8 @@
 //! of returning the calculated hash in different representations:
 //!
 //! * [`PoseidonBytesHasher`](crate::PoseidonBytesHasher) with the
-//!   [`hash_bytes`](crate::PoseidonBytesHasher::hash_bytes) method which
-//!   returns a byte array.
-//! * [`PoseidonHasher`](crate::PoseidonHasher) with the
-//!   [`hash`](crate::PoseidonHasher::hash) method which returns
+//!   `hash_bytes_be` and `hash_bytes_le` methods which returns a byte array.
+//! * [`PoseidonHasher`](crate::PoseidonHasher) with the `hash` method which returns
 //!   [`ark_ff::PrimeField`](ark_ff::PrimeField). Might be useful if you want
 //!   to immediately process the result with an another library which works with
 //!   [`ark_ff::PrimeField`](ark_ff::PrimeField) types.
@@ -58,7 +56,7 @@
 //! // ]
 //! ```
 //!
-//! With [`PoseidonHasher`][crate::PoseidonHasher] trait and
+//! With [`PoseidonHasher`](crate::PoseidonHasher) trait and
 //! [`ark_ff::PrimeField`](ark_ff::PrimeField) result:
 //!
 //! ```rust
@@ -85,7 +83,7 @@
 //! * [circomlibjs](https://github.com/iden3/circomlibjs)
 //! * [zero-knowledge-gadgets](https://github.com/webb-tools/zero-knowledge-gadgets)
 //!
-//! ## Performance
+//! # Performance
 //!
 //! This repository contains a benchmark measuring the performance of this
 //! Poseidon implementation for given 1 - 12 random 32 bytes inputs.

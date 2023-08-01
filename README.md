@@ -14,12 +14,18 @@ of generating the round constants.
 
 Parameters provided by the library are:
 
-* x^5 S-boxes
-* t = 2 - 13 (for 1 to 12 inputs)
-* 8 full rounds and partial rounds depending on t [56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65]
+* *x^5* S-boxes
+* width - *2 ≤ t ≤ 13*
+* inputs - *1 ≤ n ≤ 12*
+* 8 full rounds and partial rounds depending on *t*: *[56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65]*
+
 The parameters can be generated with:
-```$ cargo xtask generate-poseidon-parameters``
-## Output type
+
+```bash
+cargo xtask generate-poseidon-parameters
+````
+
+# Output type
 
 [`Poseidon`](crate::Poseidon) type implements two traits which serve the purpose
 of returning the calculated hash in different representations:
@@ -33,7 +39,7 @@ of returning the calculated hash in different representations:
   to immediately process the result with an another library which works with
   [`ark_ff::PrimeField`](ark_ff::PrimeField) types.
 
-## Examples
+# Examples
 
 Example with two simple big-endian byte inputs (converted to field elements)
 and BN254-based parameters provided by the library, with

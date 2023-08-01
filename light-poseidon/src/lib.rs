@@ -9,11 +9,17 @@
 //!
 //! Parameters provided by the library are:
 //!
-//! * x^5 S-boxes
-//! * t = 2 - 13 (for 1 to 12 inputs)
-//! * 8 full rounds and partial rounds depending on t [56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65]
+//! * *x^5* S-boxes
+//! * width - *2 ≤ t ≤ 13*
+//! * inputs - *1 ≤ n ≤ 12*
+//! * 8 full rounds and partial rounds depending on *t*: *[56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65]*
+//!
 //! The parameters can be generated with:
-//! ```$ cargo xtask generate-poseidon-parameters``
+//!
+//! ```bash
+//! cargo xtask generate-poseidon-parameters
+//! ````
+//!
 //! # Output type
 //!
 //! [`Poseidon`](crate::Poseidon) type implements two traits which serve the purpose

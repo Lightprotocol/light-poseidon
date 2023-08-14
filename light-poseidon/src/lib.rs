@@ -143,19 +143,26 @@ pub const MAX_X5_LEN: usize = 16;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum PoseidonError {
-    #[error("Invalid number of inputs: {inputs}, the maximum limit is {max_limit} ({width} - 1)")]
+    #[error("Invalid number of inputs: {inputs}. Maximum allowed is {max_limit} ({width} - 1).")]
     InvalidNumberOfInputs {
         inputs: usize,
         max_limit: usize,
         width: usize,
     },
-    #[error("Input is larger than the modulus of the prime field")]
+    #[error("Input is an empty slice.")]
+    EmptyInput,
+    #[error("Invalid length of the input: {len}. The length matching the modulus of the prime field is: {modulus_bytes_len}.")]
+    InvalidInputLength {
+        len: usize,
+        modulus_bytes_len: usize,
+    },
+    #[error("Input is larger than the modulus of the prime field.")]
     InputLargerThanModulus,
-    #[error("Failed to convert a vector of bytes into an array")]
+    #[error("Failed to convert a vector of bytes into an array.")]
     VecToArray,
-    #[error("Failed to convert the number of inputs to a u8")]
+    #[error("Failed to convert the number of inputs from u64 to u8.")]
     U64Tou8,
-    #[error("Selected width is invalid, select a width between 2 and 16, for 1 to 15 inputs.")]
+    #[error("Invalid width: {width}. Choose a width between 2 and 16 for 1 to 15 inputs.")]
     InvalidWidthCircom { width: usize, max_limit: usize },
 }
 
@@ -219,7 +226,6 @@ pub trait PoseidonHasher<F: PrimeField> {
     /// let hash = poseidon.hash(&[input1, input2]).unwrap();
     ///
     /// // Do something with `hash`.
-    /// ```
     fn hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError>;
 }
 
@@ -248,6 +254,19 @@ pub trait PoseidonBytesHasher {
     /// //     254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
     /// // ]
     /// ```
+    ///
+    /// # Safety
+    ///   
+    /// Unlike the
+    /// [`PrimeField::from_be_bytes_mod_order`](ark_ff::PrimeField::from_be_bytes_mod_order)
+    /// and [`Field::from_random_bytes`](ark_ff::Field::from_random_bytes)
+    /// methods, this function ensures that the input byte slice's length exactly matches
+    /// the modulus size of the prime field. If the size doesn't match, an error is returned.
+    ///
+    /// This strict check is designed to prevent unexpected behaviors and collisions
+    /// that might occur when using `from_be_bytes_mod_order` or `from_random_bytes`,
+    /// which simply take a subslice of the input if it's too large, potentially
+    /// leading to collisions.
     fn hash_bytes_be(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError>;
     /// Calculates a Poseidon hash for the given input of little-endian byte
     /// slices and returns the result as a byte array.
@@ -273,6 +292,19 @@ pub trait PoseidonBytesHasher {
     /// //     85, 3, 94, 235, 125, 28, 140, 138, 143, 147, 225, 84, 13
     /// // ]
     /// ```
+    ///
+    /// # Safety
+    ///
+    /// Unlike the
+    /// [`PrimeField::from_le_bytes_mod_order`](ark_ff::PrimeField::from_le_bytes_mod_order)
+    /// and [`Field::from_random_bytes`](ark_ff::Field::from_random_bytes)
+    /// methods, this function ensures that the input byte slice's length exactly matches
+    /// the modulus size of the prime field. If the size doesn't match, an error is returned.
+    ///
+    /// This strict check is designed to prevent unexpected behaviors and collisions
+    /// that might occur when using `from_be_bytes_mod_order` or `from_random_bytes`,
+    /// which simply take a subslice of the input if it's too large, potentially
+    /// leading to collisions.
     fn hash_bytes_le(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError>;
 }
 
@@ -385,7 +417,7 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
     fn hash_bytes_le(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
         let inputs: Result<Vec<_>, _> = inputs
             .iter()
-            .map(|input| F::from_random_bytes(input).ok_or(PoseidonError::InputLargerThanModulus))
+            .map(|input| bytes_to_prime_field_element(input))
             .collect();
         let inputs = inputs?;
         let hash = self.hash(&inputs)?;
@@ -404,9 +436,7 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
                 input.reverse();
                 input
             })
-            .map(|input| {
-                F::from_random_bytes(input.as_slice()).ok_or(PoseidonError::InputLargerThanModulus)
-            })
+            .map(|input| bytes_to_prime_field_element(input.as_slice()))
             .collect();
         let inputs = inputs?;
         let hash = self.hash(&inputs)?;
@@ -416,6 +446,38 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
             .try_into()
             .map_err(|_| PoseidonError::VecToArray)
     }
+}
+
+/// Converts a slice of bytes into a prime field element, represented by the
+/// [`ark_ff::PrimeField`](ark_ff::PrimeField)) trait.
+///
+/// # Safety
+///
+/// Unlike the
+/// [`PrimeField::from_be_bytes_mod_order`](ark_ff::PrimeField::from_be_bytes_mod_order)
+/// and [`Field::from_random_bytes`](ark_ff::Field::from_random_bytes)
+/// methods, this function ensures that the input byte slice's length exactly matches
+/// the modulus size of the prime field. If the size doesn't match, an error is returned.
+///
+/// This strict check is designed to prevent unexpected behaviors and collisions
+/// that might occur when using `from_be_bytes_mod_order` or `from_random_bytes`,
+/// which simply take a subslice of the input if it's too large, potentially
+/// leading to collisions.
+fn bytes_to_prime_field_element<F>(input: &[u8]) -> Result<F, PoseidonError>
+where
+    F: PrimeField,
+{
+    let modulus_bytes_len = ((F::MODULUS_BIT_SIZE + 7) / 8) as usize;
+    if input.is_empty() {
+        return Err(PoseidonError::EmptyInput);
+    }
+    if input.len() > modulus_bytes_len {
+        return Err(PoseidonError::InvalidInputLength {
+            len: input.len(),
+            modulus_bytes_len,
+        });
+    }
+    F::from_random_bytes(input).ok_or(PoseidonError::InputLargerThanModulus)
 }
 
 impl<F: PrimeField> Poseidon<F> {

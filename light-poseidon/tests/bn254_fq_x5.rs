@@ -1,5 +1,5 @@
 use ark_bn254::Fr;
-use ark_ff::{BigInteger, BigInteger256, One, PrimeField, Zero};
+use ark_ff::{BigInteger, One, PrimeField, Zero};
 use light_poseidon::{Poseidon, PoseidonError};
 use light_poseidon::{PoseidonBytesHasher, PoseidonHasher};
 
@@ -305,6 +305,56 @@ test_input_gt_field_size!(
         182, 69, 80, 184, 41, 160, 49, 225, 114, 78, 100, 48
     ]
 );
+
+#[test]
+fn test_endianness() {
+    let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
+    let le_input: &[u8] = &[0, 0, 0, 1];
+    let be_input: &[u8] = &[1, 0, 0, 0];
+
+    let hash1 = hasher.hash_bytes_le(&[le_input, le_input]).unwrap();
+    let mut hash2 = hasher.hash_bytes_be(&[be_input, be_input]).unwrap();
+
+    assert_ne!(hash1, hash2);
+
+    // Make it little-endian.
+    hash2.reverse();
+
+    assert_eq!(hash1, hash2);
+
+    let le_input: &[u8] = &[
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    ];
+    let be_input: &[u8] = &[
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+
+    let hash3 = hasher.hash_bytes_le(&[le_input, le_input]).unwrap();
+    let mut hash4 = hasher.hash_bytes_be(&[be_input, be_input]).unwrap();
+
+    assert_ne!(hash3, hash4);
+
+    // Make it little-endian.
+    hash4.reverse();
+
+    // Compare the latest hashes.
+    assert_eq!(hash3, hash4);
+
+    let one = 1u64;
+    let le_input = one.to_le_bytes();
+    let be_input = one.to_be_bytes();
+
+    let hash5 = hasher.hash_bytes_le(&[&le_input, &le_input]).unwrap();
+    let mut hash6 = hasher.hash_bytes_be(&[&be_input, &be_input]).unwrap();
+
+    assert_ne!(hash5, hash6);
+
+    // Make it little-endian,
+    hash6.reverse();
+
+    // Compare the latest hashes.
+    assert_eq!(hash5, hash6);
+}
 
 // test cases were created with circomlibjs poseidon([1, ...]) for 1 to 16 inputs
 const TEST_CASES: [[u8; 32]; 12] = [

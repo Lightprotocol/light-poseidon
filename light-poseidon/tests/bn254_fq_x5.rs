@@ -150,6 +150,7 @@ fn test_poseidon_bn254_x5_fq_hash_bytes_le() {
 
 #[cfg(feature = "fuzz-tests")]
 mod fuzz_tests {
+    use ark_ff::BigInteger256;
     use rand::Rng;
 
     use super::*;
@@ -354,6 +355,45 @@ fn test_endianness() {
 
     // Compare the latest hashes.
     assert_eq!(hash5, hash6);
+}
+
+#[test]
+fn test_empty_input() {
+    let empty: &[u8] = &[];
+    let non_empty = &[1u8; 32];
+
+    // All inputs empty.
+    for nr_inputs in 1..12 {
+        let mut hasher = Poseidon::<Fr>::new_circom(nr_inputs).unwrap();
+
+        let mut inputs = Vec::with_capacity(nr_inputs);
+        for _ in 0..nr_inputs {
+            inputs.push(empty);
+        }
+
+        let hash = hasher.hash_bytes_be(inputs.as_slice());
+        assert_eq!(hash, Err(PoseidonError::EmptyInput));
+
+        let hash = hasher.hash_bytes_le(inputs.as_slice());
+        assert_eq!(hash, Err(PoseidonError::EmptyInput));
+    }
+
+    // One empty input.
+    for nr_inputs in 1..12 {
+        let mut hasher = Poseidon::<Fr>::new_circom(nr_inputs).unwrap();
+
+        let mut inputs = Vec::with_capacity(nr_inputs);
+        for _ in 0..(nr_inputs - 1) {
+            inputs.push(non_empty.as_slice());
+        }
+        inputs.push(empty);
+
+        let hash = hasher.hash_bytes_be(inputs.as_slice());
+        assert_eq!(hash, Err(PoseidonError::EmptyInput));
+
+        let hash = hasher.hash_bytes_le(inputs.as_slice());
+        assert_eq!(hash, Err(PoseidonError::EmptyInput));
+    }
 }
 
 // test cases were created with circomlibjs poseidon([1, ...]) for 1 to 16 inputs

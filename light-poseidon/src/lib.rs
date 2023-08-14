@@ -149,6 +149,8 @@ pub enum PoseidonError {
         max_limit: usize,
         width: usize,
     },
+    #[error("Input is an empty slice.")]
+    EmptyInput,
     #[error("Invalid length of the input: {len}. The length matching the modulus of the prime field is: {modulus_bytes_len}.")]
     InvalidInputLength {
         len: usize,
@@ -466,6 +468,9 @@ where
     F: PrimeField,
 {
     let modulus_bytes_len = ((F::MODULUS_BIT_SIZE + 7) / 8) as usize;
+    if input.is_empty() {
+        return Err(PoseidonError::EmptyInput);
+    }
     if input.len() > modulus_bytes_len {
         return Err(PoseidonError::InvalidInputLength {
             len: input.len(),

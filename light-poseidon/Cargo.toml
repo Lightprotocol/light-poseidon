@@ -19,10 +19,6 @@ criterion = "0.5"
 rand = "0.8"
 hex = "0.4.3"
 
-[features]
-fuzz-tests = []
-
-
 [[bench]]
 name = "bn254_x5"
 harness = false

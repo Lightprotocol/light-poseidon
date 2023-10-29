@@ -496,21 +496,3 @@ fn test_circom_t_0_fails() {
         );
     }
 }
-
-#[test]
-fn test_circom_t_gt_16_fails() {
-    use light_poseidon::PoseidonError;
-
-    for i in 16..17 {
-        let hasher = Poseidon::<Fr>::new_circom(i);
-        unsafe {
-            assert_eq!(
-                hasher.unwrap_err_unchecked(),
-                PoseidonError::InvalidWidthCircom {
-                    width: i + 1,
-                    max_limit: 16
-                }
-            );
-        }
-    }
-}

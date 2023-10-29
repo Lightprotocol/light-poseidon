@@ -139,7 +139,7 @@ use thiserror::Error;
 pub mod parameters;
 
 pub const HASH_LEN: usize = 32;
-pub const MAX_X5_LEN: usize = 16;
+pub const MAX_X5_LEN: usize = 13;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum PoseidonError {

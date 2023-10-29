@@ -417,6 +417,11 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
     fn hash_bytes_le(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
         let inputs: Result<Vec<_>, _> = inputs
             .iter()
+            .map(|input| validate_bytes_length::<F>(input))
+            .collect();
+        let inputs = inputs?;
+        let inputs: Result<Vec<_>, _> = inputs
+            .iter()
             .map(|input| bytes_to_prime_field_element(input))
             .collect();
         let inputs = inputs?;
@@ -429,6 +434,11 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
     }
 
     fn hash_bytes_be(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
+        let inputs: Result<Vec<_>, _> = inputs
+            .iter()
+            .map(|input| validate_bytes_length::<F>(input))
+            .collect();
+        let inputs = inputs?;
         let inputs: Result<Vec<_>, _> = inputs
             .iter()
             .map(|input| {
@@ -448,22 +458,17 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
     }
 }
 
-/// Converts a slice of bytes into a prime field element, represented by the
-/// [`ark_ff::PrimeField`](ark_ff::PrimeField)) trait.
+/// Checks whether a slice of bytes is not empty or its length does not exceed
+/// the modulus size od the prime field. If it does, an error is returned.
 ///
 /// # Safety
 ///
-/// Unlike the
 /// [`PrimeField::from_be_bytes_mod_order`](ark_ff::PrimeField::from_be_bytes_mod_order)
-/// and [`Field::from_random_bytes`](ark_ff::Field::from_random_bytes)
-/// methods, this function ensures that the input byte slice's length exactly matches
-/// the modulus size of the prime field. If the size doesn't match, an error is returned.
-///
-/// This strict check is designed to prevent unexpected behaviors and collisions
-/// that might occur when using `from_be_bytes_mod_order` or `from_random_bytes`,
-/// which simply take a subslice of the input if it's too large, potentially
-/// leading to collisions.
-fn bytes_to_prime_field_element<F>(input: &[u8]) -> Result<F, PoseidonError>
+/// just takes a subslice of the input if it's too large, potentially leading
+/// to collisions. The purpose of this function is to prevent them by returning
+/// and error. It should be always used before converting byte slices to
+/// prime field elements.
+fn validate_bytes_length<F>(input: &[u8]) -> Result<&[u8], PoseidonError>
 where
     F: PrimeField,
 {
@@ -477,6 +482,15 @@ where
             modulus_bytes_len,
         });
     }
+    Ok(input)
+}
+
+/// Converts a slice of bytes into a prime field element, represented by the
+/// [`ark_ff::PrimeField`](ark_ff::PrimeField)) trait.
+fn bytes_to_prime_field_element<F>(input: &[u8]) -> Result<F, PoseidonError>
+where
+    F: PrimeField,
+{
     F::from_random_bytes(input).ok_or(PoseidonError::InputLargerThanModulus)
 }
 

@@ -1,7 +1,8 @@
 use ark_bn254::Fr;
-use ark_ff::{BigInteger, One, PrimeField, Zero};
+use ark_ff::{BigInteger, BigInteger256, One, PrimeField, Zero};
 use light_poseidon::{Poseidon, PoseidonError};
 use light_poseidon::{PoseidonBytesHasher, PoseidonHasher};
+use rand::Rng;
 
 #[test]
 fn test_poseidon_one() {
@@ -148,18 +149,48 @@ fn test_poseidon_bn254_x5_fq_hash_bytes_le() {
     );
 }
 
-#[cfg(feature = "fuzz-tests")]
-mod fuzz_tests {
-    use ark_ff::BigInteger256;
-    use rand::Rng;
+macro_rules! test_random_input_same_results {
+    ($name:ident, $method:ident) => {
+        #[test]
+        fn $name() {
+            let input = [1u8; 32];
 
-    use super::*;
+            for nr_inputs in 1..12 {
+                let mut hasher = Poseidon::<Fr>::new_circom(nr_inputs).unwrap();
 
-    macro_rules! test_random_input_same_results {
-        ($name:ident, $method:ident) => {
-            #[test]
-            fn $name() {
-                let input = [1u8; 32];
+                let mut inputs = Vec::with_capacity(nr_inputs);
+                for _ in 0..nr_inputs {
+                    inputs.push(input.as_slice());
+                }
+
+                let hash1 = hasher.$method(inputs.as_slice()).unwrap();
+                let hash2 = hasher.$method(inputs.as_slice()).unwrap();
+
+                assert_eq!(hash1, hash2);
+            }
+        }
+    };
+}
+
+test_random_input_same_results!(
+    test_poseidon_bn254_x5_fq_hash_bytes_be_random_input_same_results,
+    hash_bytes_be
+);
+
+test_random_input_same_results!(
+    test_poseidon_bn254_x5_fq_hash_bytes_le_random_input_same_results,
+    hash_bytes_le
+);
+
+macro_rules! test_invalid_input_length {
+    ($name:ident, $method:ident) => {
+        #[test]
+        fn $name() {
+            let mut rng = rand::thread_rng();
+
+            for _ in 0..100 {
+                let len = rng.gen_range(33..524_288_000); // Maximum 500 MB.
+                let input = vec![1u8; len];
 
                 for nr_inputs in 1..12 {
                     let mut hasher = Poseidon::<Fr>::new_circom(nr_inputs).unwrap();
@@ -169,106 +200,68 @@ mod fuzz_tests {
                         inputs.push(input.as_slice());
                     }
 
-                    let hash1 = hasher.$method(inputs.as_slice()).unwrap();
-                    let hash2 = hasher.$method(inputs.as_slice()).unwrap();
-
-                    assert_eq!(hash1, hash2);
-                }
-            }
-        };
-    }
-
-    test_random_input_same_results!(
-        test_poseidon_bn254_x5_fq_hash_bytes_be_random_input_same_results,
-        hash_bytes_be
-    );
-
-    test_random_input_same_results!(
-        test_poseidon_bn254_x5_fq_hash_bytes_le_random_input_same_results,
-        hash_bytes_le
-    );
-
-    macro_rules! test_invalid_input_length {
-        ($name:ident, $method:ident) => {
-            #[test]
-            fn $name() {
-                let mut rng = rand::thread_rng();
-
-                for _ in 0..100 {
-                    let len = rng.gen_range(33..524_288_000); // Maximum 500 MB.
-                    let input = vec![1u8; len];
-
-                    for nr_inputs in 1..12 {
-                        let mut hasher = Poseidon::<Fr>::new_circom(nr_inputs).unwrap();
-
-                        let mut inputs = Vec::with_capacity(nr_inputs);
-                        for _ in 0..nr_inputs {
-                            inputs.push(input.as_slice());
-                        }
-
-                        let hash = hasher.$method(inputs.as_slice());
-                        assert_eq!(
-                            hash,
-                            Err(PoseidonError::InvalidInputLength {
-                                len,
-                                modulus_bytes_len: 32,
-                            })
-                        );
-                    }
-                }
-            }
-        };
-    }
-
-    test_invalid_input_length!(
-        test_poseidon_bn254_x5_fq_hash_bytes_be_invalid_input_length,
-        hash_bytes_be
-    );
-
-    test_invalid_input_length!(
-        test_poseidon_bn254_x5_fq_hash_bytes_le_invalid_input_length,
-        hash_bytes_le
-    );
-
-    macro_rules! test_input_gt_field_size {
-        ($name:ident, $method:ident, $to_bytes_method:ident) => {
-            #[test]
-            fn $name() {
-                let mut greater_than_field_size = Fr::MODULUS;
-                let mut rng = rand::thread_rng();
-                let random_number = rng.gen_range(1u64..1_000_000u64);
-                greater_than_field_size.add_with_carry(&BigInteger256::from(random_number));
-                let greater_than_field_size = greater_than_field_size.$to_bytes_method();
-
-                assert_eq!(greater_than_field_size.len(), 32);
-
-                for nr_inputs in 1..12 {
-                    let mut hasher = Poseidon::<Fr>::new_circom(nr_inputs).unwrap();
-
-                    let mut inputs = Vec::with_capacity(nr_inputs);
-                    for _ in 0..nr_inputs {
-                        inputs.push(&greater_than_field_size[..]);
-                    }
-
                     let hash = hasher.$method(inputs.as_slice());
-                    assert_eq!(hash, Err(PoseidonError::InputLargerThanModulus));
+                    assert_eq!(
+                        hash,
+                        Err(PoseidonError::InvalidInputLength {
+                            len,
+                            modulus_bytes_len: 32,
+                        })
+                    );
                 }
             }
-        };
-    }
-
-    test_input_gt_field_size!(
-        test_poseidon_bn254_fq_hash_bytes_be_input_gt_field_size,
-        hash_bytes_be,
-        to_bytes_be
-    );
-
-    test_input_gt_field_size!(
-        test_poseidon_bn254_fq_hash_bytes_le_input_gt_field_size,
-        hash_bytes_le,
-        to_bytes_le
-    );
+        }
+    };
 }
+
+test_invalid_input_length!(
+    test_poseidon_bn254_x5_fq_hash_bytes_be_invalid_input_length,
+    hash_bytes_be
+);
+
+test_invalid_input_length!(
+    test_poseidon_bn254_x5_fq_hash_bytes_le_invalid_input_length,
+    hash_bytes_le
+);
+
+macro_rules! test_fuzz_input_gt_field_size {
+    ($name:ident, $method:ident, $to_bytes_method:ident) => {
+        #[test]
+        fn $name() {
+            let mut greater_than_field_size = Fr::MODULUS;
+            let mut rng = rand::thread_rng();
+            let random_number = rng.gen_range(1u64..1_000_000u64);
+            greater_than_field_size.add_with_carry(&BigInteger256::from(random_number));
+            let greater_than_field_size = greater_than_field_size.$to_bytes_method();
+
+            assert_eq!(greater_than_field_size.len(), 32);
+
+            for nr_inputs in 1..12 {
+                let mut hasher = Poseidon::<Fr>::new_circom(nr_inputs).unwrap();
+
+                let mut inputs = Vec::with_capacity(nr_inputs);
+                for _ in 0..nr_inputs {
+                    inputs.push(&greater_than_field_size[..]);
+                }
+
+                let hash = hasher.$method(inputs.as_slice());
+                assert_eq!(hash, Err(PoseidonError::InputLargerThanModulus));
+            }
+        }
+    };
+}
+
+test_fuzz_input_gt_field_size!(
+    test_fuzz_poseidon_bn254_fq_hash_bytes_be_input_gt_field_size,
+    hash_bytes_be,
+    to_bytes_be
+);
+
+test_fuzz_input_gt_field_size!(
+    test_fuzz_poseidon_bn254_fq_hash_bytes_le_input_gt_field_size,
+    hash_bytes_le,
+    to_bytes_le
+);
 
 macro_rules! test_input_gt_field_size {
     ($name:ident, $method:ident, $greater_than_field_size:expr) => {

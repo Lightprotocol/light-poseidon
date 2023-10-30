@@ -224,13 +224,13 @@ test_invalid_input_length!(
     hash_bytes_le
 );
 
-macro_rules! test_fuzz_input_gt_field_size {
+macro_rules! test_fuzz_input_gte_field_size {
     ($name:ident, $method:ident, $to_bytes_method:ident) => {
         #[test]
         fn $name() {
             let mut greater_than_field_size = Fr::MODULUS;
             let mut rng = rand::thread_rng();
-            let random_number = rng.gen_range(1u64..1_000_000u64);
+            let random_number = rng.gen_range(0u64..1_000_000u64);
             greater_than_field_size.add_with_carry(&BigInteger256::from(random_number));
             let greater_than_field_size = greater_than_field_size.$to_bytes_method();
 
@@ -251,19 +251,19 @@ macro_rules! test_fuzz_input_gt_field_size {
     };
 }
 
-test_fuzz_input_gt_field_size!(
+test_fuzz_input_gte_field_size!(
     test_fuzz_poseidon_bn254_fq_hash_bytes_be_input_gt_field_size,
     hash_bytes_be,
     to_bytes_be
 );
 
-test_fuzz_input_gt_field_size!(
+test_fuzz_input_gte_field_size!(
     test_fuzz_poseidon_bn254_fq_hash_bytes_le_input_gt_field_size,
     hash_bytes_le,
     to_bytes_le
 );
 
-macro_rules! test_input_gt_field_size {
+macro_rules! test_input_gte_field_size {
     ($name:ident, $method:ident, $greater_than_field_size:expr) => {
         #[test]
         fn $name() {
@@ -282,7 +282,25 @@ macro_rules! test_input_gt_field_size {
     };
 }
 
-test_input_gt_field_size!(
+test_input_gte_field_size!(
+    test_poseidon_bn254_fq_hash_bytes_be_input_gt_field_size_our_check,
+    hash_bytes_be,
+    [
+        216, 137, 85, 159, 239, 194, 107, 138, 254, 68, 21, 16, 165, 41, 64, 148, 208, 198, 201,
+        59, 220, 102, 142, 81, 49, 251, 174, 183, 183, 182, 4, 32,
+    ]
+);
+
+test_input_gte_field_size!(
+    test_poseidon_bn254_fq_hash_bytes_le_input_gt_field_size_our_check,
+    hash_bytes_le,
+    [
+        32, 4, 182, 183, 183, 174, 251, 49, 81, 142, 102, 220, 59, 201, 198, 208, 148, 64, 41, 165,
+        16, 21, 68, 254, 138, 107, 194, 239, 159, 85, 137, 216,
+    ]
+);
+
+test_input_gte_field_size!(
     test_poseidon_bn254_fq_hash_bytes_be_input_gt_field_size,
     hash_bytes_be,
     [
@@ -291,7 +309,7 @@ test_input_gt_field_size!(
     ]
 );
 
-test_input_gt_field_size!(
+test_input_gte_field_size!(
     test_poseidon_bn254_fq_hash_bytes_le_input_gt_field_size,
     hash_bytes_le,
     [
@@ -299,6 +317,22 @@ test_input_gt_field_size!(
         182, 69, 80, 184, 41, 160, 49, 225, 114, 78, 100, 48
     ]
 );
+
+#[test]
+fn test_input_eq_field_size_be() {
+    let mut hasher = Poseidon::<Fr>::new_circom(1).unwrap();
+    let input = Fr::MODULUS.to_bytes_be();
+    let hash = hasher.hash_bytes_be(&[&input]);
+    assert_eq!(hash, Err(PoseidonError::InputLargerThanModulus));
+}
+
+#[test]
+fn test_input_eq_field_size_le() {
+    let mut hasher = Poseidon::<Fr>::new_circom(1).unwrap();
+    let input = Fr::MODULUS.to_bytes_le();
+    let hash = hasher.hash_bytes_le(&[&input]);
+    assert_eq!(hash, Err(PoseidonError::InputLargerThanModulus));
+}
 
 #[test]
 fn test_endianness() {

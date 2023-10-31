@@ -156,12 +156,16 @@ pub enum PoseidonError {
         len: usize,
         modulus_bytes_len: usize,
     },
+    #[error("Failed to convert bytes {bytes:?} into a prime field element")]
+    BytesToPrimeFieldElement { bytes: Vec<u8> },
     #[error("Input is larger than the modulus of the prime field.")]
     InputLargerThanModulus,
     #[error("Failed to convert a vector of bytes into an array.")]
     VecToArray,
     #[error("Failed to convert the number of inputs from u64 to u8.")]
     U64Tou8,
+    #[error("Failed to convert bytes to BigInt")]
+    BytesToBigInt,
     #[error("Invalid width: {width}. Choose a width between 2 and 16 for 1 to 15 inputs.")]
     InvalidWidthCircom { width: usize, max_limit: usize },
 }
@@ -413,49 +417,32 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
     }
 }
 
+macro_rules! impl_hash_bytes {
+    ($fn_name:ident, $bytes_to_prime_field_element_fn:ident, $to_bytes_fn:ident) => {
+        fn $fn_name(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
+            let inputs: Result<Vec<_>, _> = inputs
+                .iter()
+                .map(|input| validate_bytes_length::<F>(input))
+                .collect();
+            let inputs = inputs?;
+            let inputs: Result<Vec<_>, _> = inputs
+                .iter()
+                .map(|input| $bytes_to_prime_field_element_fn(input))
+                .collect();
+            let inputs = inputs?;
+            let hash = self.hash(&inputs)?;
+
+            hash.into_bigint()
+                .$to_bytes_fn()
+                .try_into()
+                .map_err(|_| PoseidonError::VecToArray)
+        }
+    };
+}
+
 impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
-    fn hash_bytes_le(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
-        let inputs: Result<Vec<_>, _> = inputs
-            .iter()
-            .map(|input| validate_bytes_length::<F>(input))
-            .collect();
-        let inputs = inputs?;
-        let inputs: Result<Vec<_>, _> = inputs
-            .iter()
-            .map(|input| bytes_to_prime_field_element(input))
-            .collect();
-        let inputs = inputs?;
-        let hash = self.hash(&inputs)?;
-
-        hash.into_bigint()
-            .to_bytes_le()
-            .try_into()
-            .map_err(|_| PoseidonError::VecToArray)
-    }
-
-    fn hash_bytes_be(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
-        let inputs: Result<Vec<_>, _> = inputs
-            .iter()
-            .map(|input| validate_bytes_length::<F>(input))
-            .collect();
-        let inputs = inputs?;
-        let inputs: Result<Vec<_>, _> = inputs
-            .iter()
-            .map(|input| {
-                let mut input = input.to_vec();
-                input.reverse();
-                input
-            })
-            .map(|input| bytes_to_prime_field_element(input.as_slice()))
-            .collect();
-        let inputs = inputs?;
-        let hash = self.hash(&inputs)?;
-
-        hash.into_bigint()
-            .to_bytes_be()
-            .try_into()
-            .map_err(|_| PoseidonError::VecToArray)
-    }
+    impl_hash_bytes!(hash_bytes_le, bytes_to_prime_field_element_le, to_bytes_le);
+    impl_hash_bytes!(hash_bytes_be, bytes_to_prime_field_element_be, to_bytes_be);
 }
 
 /// Checks whether a slice of bytes is not empty or its length does not exceed
@@ -485,14 +472,34 @@ where
     Ok(input)
 }
 
-/// Converts a slice of bytes into a prime field element, represented by the
-/// [`ark_ff::PrimeField`](ark_ff::PrimeField)) trait.
-fn bytes_to_prime_field_element<F>(input: &[u8]) -> Result<F, PoseidonError>
-where
-    F: PrimeField,
-{
-    F::from_random_bytes(input).ok_or(PoseidonError::InputLargerThanModulus)
+macro_rules! impl_bytes_to_prime_field_element {
+    ($name:ident, $from_bytes_method:ident, $endianess:expr) => {
+        #[doc = "Converts a slice of "]
+        #[doc = $endianess]
+        #[doc = "-endian bytes into a prime field element, \
+                 represented by the [`ark_ff::PrimeField`](ark_ff::PrimeField) trait."]
+        fn $name<F>(input: &[u8]) -> Result<F, PoseidonError>
+        where
+            F: PrimeField,
+        {
+            let element = num_bigint::BigUint::$from_bytes_method(input);
+            let element = F::BigInt::try_from(element).map_err(|_| PoseidonError::BytesToBigInt)?;
+
+            // In theory, `F::from_bigint` should also perform a check whether input is
+            // larger than modulus (and return `None` if it is), but it's not reliable...
+            // To be sure, we check it ourselves.
+            if element >= F::MODULUS {
+                return Err(PoseidonError::InputLargerThanModulus);
+            }
+            let element = F::from_bigint(element).ok_or(PoseidonError::InputLargerThanModulus)?;
+
+            Ok(element)
+        }
+    };
 }
+
+impl_bytes_to_prime_field_element!(bytes_to_prime_field_element_le, from_bytes_le, "little");
+impl_bytes_to_prime_field_element!(bytes_to_prime_field_element_be, from_bytes_be, "big");
 
 impl<F: PrimeField> Poseidon<F> {
     pub fn new_circom(nr_inputs: usize) -> Result<Poseidon<Fr>, PoseidonError> {

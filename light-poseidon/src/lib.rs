@@ -455,7 +455,7 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
 /// to collisions. The purpose of this function is to prevent them by returning
 /// and error. It should be always used before converting byte slices to
 /// prime field elements.
-fn validate_bytes_length<F>(input: &[u8]) -> Result<&[u8], PoseidonError>
+pub fn validate_bytes_length<F>(input: &[u8]) -> Result<&[u8], PoseidonError>
 where
     F: PrimeField,
 {
@@ -478,7 +478,7 @@ macro_rules! impl_bytes_to_prime_field_element {
         #[doc = $endianess]
         #[doc = "-endian bytes into a prime field element, \
                  represented by the [`ark_ff::PrimeField`](ark_ff::PrimeField) trait."]
-        fn $name<F>(input: &[u8]) -> Result<F, PoseidonError>
+        pub fn $name<F>(input: &[u8]) -> Result<F, PoseidonError>
         where
             F: PrimeField,
         {

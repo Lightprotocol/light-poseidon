@@ -1,5 +1,5 @@
 use ark_bn254::Fr;
-use ark_ff::{BigInteger, BigInteger256, One, PrimeField, Zero};
+use ark_ff::{BigInteger, BigInteger256, One, PrimeField, UniformRand, Zero};
 use light_poseidon::{
     bytes_to_prime_field_element_be, bytes_to_prime_field_element_le, validate_bytes_length,
     Poseidon, PoseidonError,
@@ -7,6 +7,7 @@ use light_poseidon::{
 use light_poseidon::{PoseidonBytesHasher, PoseidonHasher};
 use rand::Rng;
 
+/// Checks the hash of `1` as a prime field element.
 #[test]
 fn test_poseidon_one() {
     let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
@@ -32,13 +33,13 @@ fn test_poseidon_one() {
     assert_eq!(hash.into_bigint().to_bytes_be(), expected);
 }
 
+/// Checks the hash of byte slices consistng of ones and twos.
 #[test]
 fn test_poseidon_bn254_x5_fq_input_ones_twos() {
     let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
     let input2 = Fr::from_be_bytes_mod_order(&[2u8; 32]);
     let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
     let hash = hasher.hash(&[input1, input2]).unwrap();
-
     assert_eq!(
         hash.into_bigint().to_bytes_be(),
         [
@@ -46,8 +47,28 @@ fn test_poseidon_bn254_x5_fq_input_ones_twos() {
             254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
         ]
     );
+
+    let hash = hasher.hash_bytes_be(&[&[1u8; 32], &[2u8; 32]]).unwrap();
+    assert_eq!(
+        hash,
+        [
+            13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123, 132,
+            254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
+        ]
+    );
+
+    let hash = hasher.hash_bytes_le(&[&[1u8; 32], &[2u8; 32]]).unwrap();
+    assert_eq!(
+        hash,
+        [
+            144, 25, 130, 41, 200, 53, 231, 38, 27, 206, 162, 156, 254, 132, 123, 32, 25, 99, 242,
+            85, 3, 94, 235, 125, 28, 140, 138, 143, 147, 225, 84, 13
+        ]
+    )
 }
 
+/// Checks thebash of bytes slices consisting of ones and twos, with a custom
+/// domain tag.
 #[test]
 fn test_poseidon_bn254_x5_fq_with_domain_tag() {
     let input1 = Fr::from_be_bytes_mod_order(&[1u8; 32]);
@@ -68,6 +89,7 @@ fn test_poseidon_bn254_x5_fq_with_domain_tag() {
     assert_ne!(hash.into_bigint().to_bytes_be(), expected_tag_zero);
 }
 
+/// Checks the hash of one and two.
 #[test]
 fn test_poseidon_bn254_x5_fq_input_one_two() {
     let input1 = Fr::from_be_bytes_mod_order(&[1]);
@@ -109,49 +131,44 @@ fn test_poseidon_bn254_x5_fq_input_random() {
     )
 }
 
+/// Check whther providing different number of inputs than supported by the
+/// hasher results in an error.
 #[test]
-fn test_poseidon_bn254_x5_fq_input_invalid() {
-    let mut vec = Vec::new();
-    for _ in 0..17 {
-        vec.push(Fr::from_be_bytes_mod_order(&[1u8; 32]));
+fn test_poseidon_bn254_x5_fq_too_many_inputs() {
+    let mut rng = rand::thread_rng();
+
+    for i in 1..13 {
+        let mut hasher = Poseidon::<Fr>::new_circom(i).unwrap();
+
+        for j in 1..13 {
+            if i != j {
+                let inputs: Vec<_> = (0..j).map(|_| Fr::rand(&mut rng)).collect();
+                let res = hasher.hash(&inputs);
+                assert!(res.is_err());
+
+                let inputs_bytes_be: Vec<_> = inputs
+                    .iter()
+                    .map(|i| i.into_bigint().to_bytes_be())
+                    .collect();
+                let inputs_bytes_be: Vec<&[u8]> = inputs_bytes_be.iter().map(|v| &v[..]).collect();
+                let res_bytes_be = hasher.hash_bytes_be(&inputs_bytes_be);
+                assert!(res_bytes_be.is_err());
+
+                let inputs_bytes_le: Vec<_> = inputs
+                    .iter()
+                    .map(|i| i.into_bigint().to_bytes_le())
+                    .collect();
+                let inputs_bytes_le: Vec<&[u8]> = inputs_bytes_le.iter().map(|v| &v[..]).collect();
+                let res_bytes_le = hasher.hash_bytes_le(&inputs_bytes_le);
+                assert!(res_bytes_le.is_err());
+            }
+        }
     }
-    let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
-
-    assert!(hasher.hash(&vec).is_err());
-
-    vec.push(Fr::from_be_bytes_mod_order(&[4u8; 32]));
-
-    assert!(hasher.hash(&vec).is_err());
 }
 
-#[test]
-fn test_poseidon_bn254_x5_fq_hash_bytes_be() {
-    let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
-    let hash = hasher.hash_bytes_be(&[&[1u8; 32], &[2u8; 32]]).unwrap();
-
-    assert_eq!(
-        hash,
-        [
-            13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123, 132,
-            254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
-        ]
-    );
-}
-
-#[test]
-fn test_poseidon_bn254_x5_fq_hash_bytes_le() {
-    let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
-    let hash = hasher.hash_bytes_le(&[&[1u8; 32], &[2u8; 32]]).unwrap();
-
-    assert_eq!(
-        hash,
-        [
-            144, 25, 130, 41, 200, 53, 231, 38, 27, 206, 162, 156, 254, 132, 123, 32, 25, 99, 242,
-            85, 3, 94, 235, 125, 28, 140, 138, 143, 147, 225, 84, 13
-        ]
-    );
-}
-
+/// Check whether byte inputs with length lower than the byte limit indicated
+/// by the modulus produce the same hashes as equivalent byte inputs padded with
+/// zeros. They should be serialized as the same prime field elements.
 #[test]
 fn test_poseidon_bn254_x5_fq_smaller_arrays() {
     let mut hasher = Poseidon::<Fr>::new_circom(1).unwrap();
@@ -177,6 +194,10 @@ fn test_poseidon_bn254_x5_fq_smaller_arrays() {
     }
 }
 
+/// Check whether big-endian byte inputs with length lower than the byte limit
+/// indicated by the modulus produce the same hashes as equivalent byte inputs
+/// padded with zeros. Randomize the byte slices and try all the possible
+/// lengths. They should be serialized as the same prime field elements.
 #[test]
 fn test_poseidon_bn254_x5_fq_hash_bytes_be_smaller_arrays_random() {
     for nr_inputs in 1..12 {
@@ -212,6 +233,10 @@ fn test_poseidon_bn254_x5_fq_hash_bytes_be_smaller_arrays_random() {
     }
 }
 
+/// Check whether little-endian byte inputs with length lower than the byte limit
+/// indicated by the modulus produce the same hashes as equivalent byte inputs
+/// padded with zeros. Randomize the byte slices and try all the possible
+/// lengths. They should be serialized as the same prime field elements.
 #[test]
 fn test_poseidon_bn254_x5_fq_hash_bytes_le_smaller_arrays_random() {
     for nr_inputs in 1..12 {
@@ -247,6 +272,8 @@ fn test_poseidon_bn254_x5_fq_hash_bytes_le_smaller_arrays_random() {
     }
 }
 
+/// Check whether `validate_bytes_length` returns an error when an input is a
+/// byte slice with greater number of elements than indicated by the modulus.
 #[test]
 fn test_poseidon_bn254_x5_fq_validate_bytes_length() {
     for i in 1..32 {
@@ -262,6 +289,9 @@ fn test_poseidon_bn254_x5_fq_validate_bytes_length() {
     }
 }
 
+/// Check whether `validate_bytes_length` returns an error when an input is a
+/// byte slice with greater number of elements than indicated by the modulus.
+/// Randomize the length.
 #[test]
 fn test_poseidon_bn254_x5_fq_validate_bytes_length_fuzz() {
     let mut rng = rand::thread_rng();
@@ -275,10 +305,63 @@ fn test_poseidon_bn254_x5_fq_validate_bytes_length_fuzz() {
     }
 }
 
+/// Checks whether hashes generated by [`PoseidonHasher::hash`],
+/// [`PoseidonBytesHasher::hash_bytes_be`] and [`PoseidonBytesHasher::hash_bytes_le`]
+/// are the same.
+#[test]
+fn test_poseidon_bn254_x5_fq_bytes() {
+    let mut rng = rand::thread_rng();
+
+    for _ in 0..100 {
+        for nr_inputs in 1..12 {
+            let mut hasher = Poseidon::<Fr>::new_circom(nr_inputs).unwrap();
+
+            // Hash prime field elements.
+            let mut inputs = Vec::with_capacity(nr_inputs);
+            for _ in 0..nr_inputs {
+                inputs.push(Fr::rand(&mut rng));
+            }
+            let res = hasher.hash(&inputs).unwrap();
+
+            // Hash big-endian bytes. Ensure that the result is the same.
+            let inputs_bytes_be: Vec<_> = inputs
+                .iter()
+                .map(|i| i.into_bigint().to_bytes_be())
+                .collect();
+            let inputs_bytes_be: Vec<&[u8]> = inputs_bytes_be.iter().map(|v| &v[..]).collect();
+            let res_bytes_be = hasher.hash_bytes_be(&inputs_bytes_be).unwrap();
+            assert_eq!(res.into_bigint().to_bytes_be(), res_bytes_be);
+
+            // Hash little-endian bytes. Ensure that the result is the same.
+            let inputs_bytes_le: Vec<_> = inputs
+                .iter()
+                .map(|i| i.into_bigint().to_bytes_le())
+                .collect();
+            let inputs_bytes_le: Vec<&[u8]> = inputs_bytes_le.iter().map(|v| &v[..]).collect();
+            let res_bytes_le = hasher.hash_bytes_le(&inputs_bytes_le).unwrap();
+            assert_eq!(res.into_bigint().to_bytes_le(), res_bytes_le);
+        }
+    }
+}
+
 macro_rules! test_bytes_to_prime_field_element {
     ($name:ident, $to_bytes_method:ident, $fn:ident) => {
+        /// Checks whether `bytes_to_prime_field_element_*` functions:
+        ///
+        /// * Are converting the valid byte slices appropiately.
+        /// * Are throwing an error if the input is greater or equal to the
+        ///   modulus.
         #[test]
         fn $name() {
+            // Test conversion of random prime field elements from bytes to `F`.
+            let mut rng = rand::thread_rng();
+            for _ in 0..100 {
+                let f = Fr::rand(&mut rng);
+                let f = f.into_bigint().$to_bytes_method();
+                let res = $fn::<Fr>(&f);
+                assert!(res.is_ok());
+            }
+
             let mut lt = Fr::MODULUS;
             lt.sub_with_borrow(&BigInteger256::from(1u64));
             let lt = lt.$to_bytes_method();
@@ -316,6 +399,8 @@ test_bytes_to_prime_field_element!(
 
 macro_rules! test_random_input_same_results {
     ($name:ident, $method:ident) => {
+        /// Check whether hashing the same input twice, separately, produces the
+        /// same results.
         #[test]
         fn $name() {
             let input = [1u8; 32];
@@ -349,6 +434,8 @@ test_random_input_same_results!(
 
 macro_rules! test_invalid_input_length {
     ($name:ident, $method:ident) => {
+        /// Checks whether hashing byte slices with number of elements larger
+        /// than indicated by modulus returns an error.
         #[test]
         fn $name() {
             let mut rng = rand::thread_rng();
@@ -391,6 +478,8 @@ test_invalid_input_length!(
 
 macro_rules! test_fuzz_input_gte_field_size {
     ($name:ident, $method:ident, $to_bytes_method:ident) => {
+        /// Checks whether hashing a byte slice representing an element larger
+        /// than modulus returns an error.
         #[test]
         fn $name() {
             let mut greater_than_field_size = Fr::MODULUS;
@@ -430,6 +519,8 @@ test_fuzz_input_gte_field_size!(
 
 macro_rules! test_input_gte_field_size {
     ($name:ident, $method:ident, $greater_than_field_size:expr) => {
+        /// Checks whether hashing a byte slice representing an element larger
+        /// than modulus returns an error.
         #[test]
         fn $name() {
             for nr_inputs in 1..12 {
@@ -483,22 +574,24 @@ test_input_gte_field_size!(
     ]
 );
 
-#[test]
-fn test_input_eq_field_size_be() {
-    let mut hasher = Poseidon::<Fr>::new_circom(1).unwrap();
-    let input = Fr::MODULUS.to_bytes_be();
-    let hash = hasher.hash_bytes_be(&[&input]);
-    assert_eq!(hash, Err(PoseidonError::InputLargerThanModulus));
+macro_rules! test_input_eq_field_size {
+    ($name:ident, $method:ident, $to_bytes_method:ident) => {
+        /// Checks whether hashing a byte slice representing a modulus returns
+        /// an error.
+        #[test]
+        fn $name() {
+            let mut hasher = Poseidon::<Fr>::new_circom(1).unwrap();
+            let input = Fr::MODULUS.$to_bytes_method();
+            let hash = hasher.$method(&[&input]);
+            assert_eq!(hash, Err(PoseidonError::InputLargerThanModulus));
+        }
+    };
 }
 
-#[test]
-fn test_input_eq_field_size_le() {
-    let mut hasher = Poseidon::<Fr>::new_circom(1).unwrap();
-    let input = Fr::MODULUS.to_bytes_le();
-    let hash = hasher.hash_bytes_le(&[&input]);
-    assert_eq!(hash, Err(PoseidonError::InputLargerThanModulus));
-}
+test_input_eq_field_size!(test_input_eq_field_size_be, hash_bytes_be, to_bytes_be);
+test_input_eq_field_size!(test_input_eq_field_size_le, hash_bytes_le, to_bytes_le);
 
+/// Checks that endianness is honored correctly and produces expected hashes.
 #[test]
 fn test_endianness() {
     let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
@@ -549,6 +642,7 @@ fn test_endianness() {
     assert_eq!(hash5, hash6);
 }
 
+/// Checks whether providing an empty input results in an error.
 #[test]
 fn test_empty_input() {
     let empty: &[u8] = &[];
@@ -660,6 +754,8 @@ fn test_circom_1_to_12_inputs() {
     }
 }
 
+/// Checks whether creating a hasher for more than 12 inputs results in an
+/// error.
 #[test]
 fn test_circom_solana_t_gt_12_fails() {
     use light_poseidon::PoseidonError;
@@ -681,6 +777,7 @@ fn test_circom_solana_t_gt_12_fails() {
     }
 }
 
+/// Checks whether crating a hasher for 0 inputs results in an error.
 #[test]
 fn test_circom_t_0_fails() {
     use light_poseidon::PoseidonError;

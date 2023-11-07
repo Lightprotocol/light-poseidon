@@ -1,6 +1,9 @@
 use ark_bn254::Fr;
 use ark_ff::{BigInteger, BigInteger256, One, PrimeField, Zero};
-use light_poseidon::{Poseidon, PoseidonError};
+use light_poseidon::{
+    bytes_to_prime_field_element_be, bytes_to_prime_field_element_le, validate_bytes_length,
+    Poseidon, PoseidonError,
+};
 use light_poseidon::{PoseidonBytesHasher, PoseidonHasher};
 use rand::Rng;
 
@@ -148,6 +151,168 @@ fn test_poseidon_bn254_x5_fq_hash_bytes_le() {
         ]
     );
 }
+
+#[test]
+fn test_poseidon_bn254_x5_fq_smaller_arrays() {
+    let mut hasher = Poseidon::<Fr>::new_circom(1).unwrap();
+
+    let input1 = vec![1; 1];
+    let hash1 = hasher.hash_bytes_le(&[input1.as_slice()]).unwrap();
+
+    for len in 2..32 {
+        let input = [vec![1u8], vec![0; len - 1]].concat();
+        let hash = hasher.hash_bytes_le(&[input.as_slice()]).unwrap();
+
+        assert_eq!(hash, hash1);
+    }
+
+    let input1 = vec![1; 1];
+    let hash1 = hasher.hash_bytes_be(&[input1.as_slice()]).unwrap();
+
+    for len in 2..32 {
+        let input = [vec![0; len - 1], vec![1u8]].concat();
+        let hash = hasher.hash_bytes_be(&[input.as_slice()]).unwrap();
+
+        assert_eq!(hash, hash1);
+    }
+}
+
+#[test]
+fn test_poseidon_bn254_x5_fq_hash_bytes_be_smaller_arrays_random() {
+    for nr_inputs in 1..12 {
+        let mut hasher = Poseidon::<Fr>::new_circom(nr_inputs).unwrap();
+        for smaller_arr_len in 1..31 {
+            let inputs: Vec<Vec<u8>> = (0..nr_inputs)
+                .map(|_| {
+                    let rng = rand::thread_rng();
+                    rng.sample_iter(rand::distributions::Standard)
+                        .take(smaller_arr_len)
+                        .collect()
+                })
+                .collect();
+            let inputs: Vec<&[u8]> = inputs.iter().map(|v| &v[..]).collect();
+            let hash1 = hasher.hash_bytes_be(inputs.as_slice()).unwrap();
+
+            for greater_arr_len in smaller_arr_len + 1..32 {
+                let inputs: Vec<Vec<u8>> = inputs
+                    .iter()
+                    .map(|input| {
+                        [vec![0u8; greater_arr_len - smaller_arr_len], input.to_vec()].concat()
+                    })
+                    .collect();
+                let inputs: Vec<&[u8]> = inputs.iter().map(|v| &v[..]).collect();
+                let hash = hasher.hash_bytes_be(inputs.as_slice()).unwrap();
+
+                assert_eq!(
+                    hash, hash1,
+                    "inputs: {nr_inputs}, smaller array length: {smaller_arr_len}, greater array length: {greater_arr_len}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_poseidon_bn254_x5_fq_hash_bytes_le_smaller_arrays_random() {
+    for nr_inputs in 1..12 {
+        let mut hasher = Poseidon::<Fr>::new_circom(nr_inputs).unwrap();
+        for smaller_arr_len in 1..31 {
+            let inputs: Vec<Vec<u8>> = (0..nr_inputs)
+                .map(|_| {
+                    let rng = rand::thread_rng();
+                    rng.sample_iter(rand::distributions::Standard)
+                        .take(smaller_arr_len)
+                        .collect()
+                })
+                .collect();
+            let inputs: Vec<&[u8]> = inputs.iter().map(|v| &v[..]).collect();
+            let hash1 = hasher.hash_bytes_le(inputs.as_slice()).unwrap();
+
+            for greater_arr_len in smaller_arr_len + 1..32 {
+                let inputs: Vec<Vec<u8>> = inputs
+                    .iter()
+                    .map(|input| {
+                        [input.to_vec(), vec![0u8; greater_arr_len - smaller_arr_len]].concat()
+                    })
+                    .collect();
+                let inputs: Vec<&[u8]> = inputs.iter().map(|v| &v[..]).collect();
+                let hash = hasher.hash_bytes_le(inputs.as_slice()).unwrap();
+
+                assert_eq!(
+                    hash, hash1,
+                    "inputs: {nr_inputs}, smaller array length: {smaller_arr_len}, greater array length: {greater_arr_len}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_poseidon_bn254_x5_fq_validate_bytes_length() {
+    for i in 1..32 {
+        let input = vec![1u8; i];
+        let res = validate_bytes_length::<Fr>(&input).unwrap();
+        assert_eq!(res, &input);
+    }
+
+    for i in 33..64 {
+        let input = vec![1u8; i];
+        let res = validate_bytes_length::<Fr>(&input);
+        assert!(res.is_err());
+    }
+}
+
+#[test]
+fn test_poseidon_bn254_x5_fq_validate_bytes_length_fuzz() {
+    let mut rng = rand::thread_rng();
+
+    for _ in 0..100 {
+        let len = rng.gen_range(33..524_288_000); // Maximum 500 MB.
+        let input = vec![1u8; len];
+        let res = validate_bytes_length::<Fr>(&input);
+
+        assert!(res.is_err());
+    }
+}
+
+macro_rules! test_bytes_to_prime_field_element {
+    ($name:ident, $to_bytes_method:ident, $fn:ident) => {
+        #[test]
+        fn $name() {
+            let mut lt = Fr::MODULUS;
+            lt.sub_with_borrow(&BigInteger256::from(1u64));
+            let lt = lt.$to_bytes_method();
+            let res = $fn::<Fr>(&lt);
+
+            assert!(res.is_ok());
+
+            let eq = Fr::MODULUS;
+            let eq = eq.$to_bytes_method();
+            let res = $fn::<Fr>(&eq);
+
+            assert!(res.is_err());
+
+            let mut gt = Fr::MODULUS;
+            gt.add_with_carry(&BigInteger256::from(1u64));
+            let gt = gt.$to_bytes_method();
+            let res = $fn::<Fr>(&gt);
+
+            assert!(res.is_err());
+        }
+    };
+}
+
+test_bytes_to_prime_field_element!(
+    test_poseidon_bn254_x5_fq_to_prime_field_element_be,
+    to_bytes_be,
+    bytes_to_prime_field_element_be
+);
+
+test_bytes_to_prime_field_element!(
+    test_poseidon_bn254_x5_fq_to_prime_field_element_le,
+    to_bytes_le,
+    bytes_to_prime_field_element_le
+);
 
 macro_rules! test_random_input_same_results {
     ($name:ident, $method:ident) => {

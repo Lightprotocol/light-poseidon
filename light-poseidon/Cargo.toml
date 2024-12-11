@@ -10,8 +10,8 @@ license = "Apache-2.0"
 edition = "2021"
 
 [dependencies]
-ark-bn254 = "0.4.0"
-ark-ff = "0.4.0"
+ark-bn254 = "0.5"
+ark-ff = "0.5"
 num-bigint = "0.4.4"
 thiserror = "1.0"
 

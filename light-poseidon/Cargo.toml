@@ -1,6 +1,6 @@
 [package]
 name = "light-poseidon"
-version = "0.3.0"
+version = "0.2.0"
 authors = ["Mike Rostecki <vadorovsky@protonmail.com>"]
 description = "Poseidon hash implementation in Rust"
 repository = "https://github.com/Lightprotocol/light-poseidon"

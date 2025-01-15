@@ -96,36 +96,32 @@
 //!
 //! This is the result from a host with the following hardware:
 //!
-//! * 12th Gen Intel® Core™ i7-1260P × 16
+//! * AMD Ryzen™ 9 7945HX with Radeon™ Graphics × 32
 //!
 //! ```norust
-//! poseidon_bn254_x5_1     time:   [17.543 µs 18.303 µs 19.133 µs]
-//! Found 9 outliers among 100 measurements (9.00%)
-//!   9 (9.00%) high mild
+//! poseidon_bn254_x5_1     time:   [12.710 µs 12.735 µs 12.754 µs]
 //!
-//! poseidon_bn254_x5_2     time:   [25.020 µs 25.866 µs 26.830 µs]
+//! poseidon_bn254_x5_2     time:   [18.948 µs 18.963 µs 18.990 µs]
 //!
-//! poseidon_bn254_x5_3     time:   [36.076 µs 37.549 µs 38.894 µs]
+//! poseidon_bn254_x5_3     time:   [26.607 µs 26.611 µs 26.615 µs]
 //!
-//! poseidon_bn254_x5_4     time:   [50.333 µs 52.598 µs 54.806 µs]
+//! poseidon_bn254_x5_4     time:   [38.507 µs 38.513 µs 38.519 µs]
 //!
-//! poseidon_bn254_x5_5     time:   [64.184 µs 66.324 µs 68.706 µs]
+//! poseidon_bn254_x5_5     time:   [51.024 µs 51.031 µs 51.039 µs]
 //!
-//! poseidon_bn254_x5_6     time:   [87.356 µs 90.259 µs 93.437 µs]
+//! poseidon_bn254_x5_6     time:   [68.368 µs 68.375 µs 68.385 µs]
 //!
-//! poseidon_bn254_x5_7     time:   [120.08 µs 125.26 µs 130.23 µs]
+//! poseidon_bn254_x5_7     time:   [86.819 µs 86.886 µs 86.968 µs]
 //!
-//! poseidon_bn254_x5_8     time:   [134.28 µs 139.65 µs 145.71 µs]
+//! poseidon_bn254_x5_8     time:   [105.38 µs 105.49 µs 105.61 µs]
 //!
-//! poseidon_bn254_x5_9     time:   [161.99 µs 168.93 µs 175.94 µs]
+//! poseidon_bn254_x5_9     time:   [121.99 µs 122.00 µs 122.01 µs]
 //!
-//! poseidon_bn254_x5_10    time:   [208.11 µs 215.27 µs 222.99 µs]
-//! Found 1 outliers among 100 measurements (1.00%)
-//!   1 (1.00%) high mild
+//! poseidon_bn254_x5_10    time:   [157.00 µs 157.02 µs 157.05 µs]
 //!
-//! poseidon_bn254_x5_11    time:   [239.47 µs 249.05 µs 258.35 µs]
+//! poseidon_bn254_x5_11    time:   [170.01 µs 170.04 µs 170.07 µs]
 //!
-//! poseidon_bn254_x5_12    time:   [295.47 µs 305.80 µs 316.41 µs]
+//! poseidon_bn254_x5_12    time:   [210.78 µs 210.81 µs 210.84 µs]
 //! ```
 //!
 //! # Security

@@ -15,9 +15,6 @@ ark-ff = "0.5.0"
 num-bigint = "0.4.4"
 thiserror = "1.0"
 
-[features]
-test-sbf = []
-
 [dev-dependencies]
 criterion = "0.5"
 rand = "0.8"

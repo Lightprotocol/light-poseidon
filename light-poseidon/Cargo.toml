@@ -1,6 +1,6 @@
 [package]
 name = "light-poseidon"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Mike Rostecki <vadorovsky@protonmail.com>"]
 description = "Poseidon hash implementation in Rust"
 repository = "https://github.com/Lightprotocol/light-poseidon"
@@ -10,10 +10,13 @@ license = "Apache-2.0"
 edition = "2021"
 
 [dependencies]
-ark-bn254 = "0.4.0"
-ark-ff = "0.4.0"
+ark-bn254 = "0.5.0"
+ark-ff = "0.5.0"
 num-bigint = "0.4.4"
 thiserror = "1.0"
+
+[features]
+test-sbf = []
 
 [dev-dependencies]
 criterion = "0.5"

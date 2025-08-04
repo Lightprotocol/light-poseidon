@@ -131,7 +131,7 @@ fn test_poseidon_bn254_x5_fq_input_random() {
     )
 }
 
-/// Check whther providing different number of inputs than supported by the
+/// Check whether providing different number of inputs than supported by the
 /// hasher results in an error.
 #[test]
 fn test_poseidon_bn254_x5_fq_too_many_inputs() {
@@ -348,7 +348,7 @@ macro_rules! test_bytes_to_prime_field_element {
     ($name:ident, $to_bytes_method:ident, $fn:ident) => {
         /// Checks whether `bytes_to_prime_field_element_*` functions:
         ///
-        /// * Are converting the valid byte slices appropiately.
+        /// * Are converting the valid byte slices appropriately.
         /// * Are throwing an error if the input is greater or equal to the
         ///   modulus.
         #[test]

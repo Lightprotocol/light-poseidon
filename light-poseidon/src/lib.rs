@@ -459,7 +459,7 @@ where
     if input.is_empty() {
         return Err(PoseidonError::EmptyInput);
     }
-    if input.len() > modulus_bytes_len {
+    if input.len() != modulus_bytes_len {
         return Err(PoseidonError::InvalidInputLength {
             len: input.len(),
             modulus_bytes_len,

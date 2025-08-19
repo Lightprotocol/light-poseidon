@@ -166,121 +166,19 @@ fn test_poseidon_bn254_x5_fq_too_many_inputs() {
     }
 }
 
-/// Check whether byte inputs with length lower than the byte limit indicated
-/// by the modulus produce the same hashes as equivalent byte inputs padded with
-/// zeros. They should be serialized as the same prime field elements.
-#[test]
-fn test_poseidon_bn254_x5_fq_smaller_arrays() {
-    let mut hasher = Poseidon::<Fr>::new_circom(1).unwrap();
-
-    let input1 = vec![1; 1];
-    let hash1 = hasher.hash_bytes_le(&[input1.as_slice()]).unwrap();
-
-    for len in 2..32 {
-        let input = [vec![1u8], vec![0; len - 1]].concat();
-        let hash = hasher.hash_bytes_le(&[input.as_slice()]).unwrap();
-
-        assert_eq!(hash, hash1);
-    }
-
-    let input1 = vec![1; 1];
-    let hash1 = hasher.hash_bytes_be(&[input1.as_slice()]).unwrap();
-
-    for len in 2..32 {
-        let input = [vec![0; len - 1], vec![1u8]].concat();
-        let hash = hasher.hash_bytes_be(&[input.as_slice()]).unwrap();
-
-        assert_eq!(hash, hash1);
-    }
-}
-
-/// Check whether big-endian byte inputs with length lower than the byte limit
-/// indicated by the modulus produce the same hashes as equivalent byte inputs
-/// padded with zeros. Randomize the byte slices and try all the possible
-/// lengths. They should be serialized as the same prime field elements.
-#[test]
-fn test_poseidon_bn254_x5_fq_hash_bytes_be_smaller_arrays_random() {
-    for nr_inputs in 1..12 {
-        let mut hasher = Poseidon::<Fr>::new_circom(nr_inputs).unwrap();
-        for smaller_arr_len in 1..31 {
-            let inputs: Vec<Vec<u8>> = (0..nr_inputs)
-                .map(|_| {
-                    let rng = rand::thread_rng();
-                    rng.sample_iter(rand::distributions::Standard)
-                        .take(smaller_arr_len)
-                        .collect()
-                })
-                .collect();
-            let inputs: Vec<&[u8]> = inputs.iter().map(|v| &v[..]).collect();
-            let hash1 = hasher.hash_bytes_be(inputs.as_slice()).unwrap();
-
-            for greater_arr_len in smaller_arr_len + 1..32 {
-                let inputs: Vec<Vec<u8>> = inputs
-                    .iter()
-                    .map(|input| {
-                        [vec![0u8; greater_arr_len - smaller_arr_len], input.to_vec()].concat()
-                    })
-                    .collect();
-                let inputs: Vec<&[u8]> = inputs.iter().map(|v| &v[..]).collect();
-                let hash = hasher.hash_bytes_be(inputs.as_slice()).unwrap();
-
-                assert_eq!(
-                    hash, hash1,
-                    "inputs: {nr_inputs}, smaller array length: {smaller_arr_len}, greater array length: {greater_arr_len}"
-                );
-            }
-        }
-    }
-}
-
-/// Check whether little-endian byte inputs with length lower than the byte limit
-/// indicated by the modulus produce the same hashes as equivalent byte inputs
-/// padded with zeros. Randomize the byte slices and try all the possible
-/// lengths. They should be serialized as the same prime field elements.
-#[test]
-fn test_poseidon_bn254_x5_fq_hash_bytes_le_smaller_arrays_random() {
-    for nr_inputs in 1..12 {
-        let mut hasher = Poseidon::<Fr>::new_circom(nr_inputs).unwrap();
-        for smaller_arr_len in 1..31 {
-            let inputs: Vec<Vec<u8>> = (0..nr_inputs)
-                .map(|_| {
-                    let rng = rand::thread_rng();
-                    rng.sample_iter(rand::distributions::Standard)
-                        .take(smaller_arr_len)
-                        .collect()
-                })
-                .collect();
-            let inputs: Vec<&[u8]> = inputs.iter().map(|v| &v[..]).collect();
-            let hash1 = hasher.hash_bytes_le(inputs.as_slice()).unwrap();
-
-            for greater_arr_len in smaller_arr_len + 1..32 {
-                let inputs: Vec<Vec<u8>> = inputs
-                    .iter()
-                    .map(|input| {
-                        [input.to_vec(), vec![0u8; greater_arr_len - smaller_arr_len]].concat()
-                    })
-                    .collect();
-                let inputs: Vec<&[u8]> = inputs.iter().map(|v| &v[..]).collect();
-                let hash = hasher.hash_bytes_le(inputs.as_slice()).unwrap();
-
-                assert_eq!(
-                    hash, hash1,
-                    "inputs: {nr_inputs}, smaller array length: {smaller_arr_len}, greater array length: {greater_arr_len}"
-                );
-            }
-        }
-    }
-}
-
 /// Check whether `validate_bytes_length` returns an error when an input is a
 /// byte slice with greater number of elements than indicated by the modulus.
 #[test]
 fn test_poseidon_bn254_x5_fq_validate_bytes_length() {
-    for i in 1..32 {
+    for i in 1..31 {
         let input = vec![1u8; i];
-        let res = validate_bytes_length::<Fr>(&input).unwrap();
-        assert_eq!(res, &input);
+        let res = validate_bytes_length::<Fr>(&input);
+        assert!(res.is_err());
     }
+
+    let input = vec![1u8; 32];
+    let res = validate_bytes_length::<Fr>(&input).unwrap();
+    assert_eq!(res, &input);
 
     for i in 33..64 {
         let input = vec![1u8; i];
@@ -595,51 +493,37 @@ test_input_eq_field_size!(test_input_eq_field_size_le, hash_bytes_le, to_bytes_l
 #[test]
 fn test_endianness() {
     let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
-    let le_input: &[u8] = &[0, 0, 0, 1];
-    let be_input: &[u8] = &[1, 0, 0, 0];
+
+    let le_input: &[u8] = &[
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 1,
+    ];
+    let be_input: &[u8] = &[
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0,
+    ];
 
     let hash1 = hasher.hash_bytes_le(&[le_input, le_input]).unwrap();
     let mut hash2 = hasher.hash_bytes_be(&[be_input, be_input]).unwrap();
 
     assert_ne!(hash1, hash2);
 
-    // Make it little-endian.
+    // Make `hash2` little-endian.
     hash2.reverse();
-
     assert_eq!(hash1, hash2);
 
-    let le_input: &[u8] = &[
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-    ];
-    let be_input: &[u8] = &[
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ];
+    let one = BigInteger256::from(1u64);
+    let le_input = one.to_bytes_le();
+    let be_input = one.to_bytes_be();
 
-    let hash3 = hasher.hash_bytes_le(&[le_input, le_input]).unwrap();
-    let mut hash4 = hasher.hash_bytes_be(&[be_input, be_input]).unwrap();
+    let hash3 = hasher.hash_bytes_le(&[&le_input, &le_input]).unwrap();
+    let mut hash4 = hasher.hash_bytes_be(&[&be_input, &be_input]).unwrap();
 
     assert_ne!(hash3, hash4);
 
-    // Make it little-endian.
+    // Make `hash4` little-endian.
     hash4.reverse();
-
-    // Compare the latest hashes.
     assert_eq!(hash3, hash4);
-
-    let one = 1u64;
-    let le_input = one.to_le_bytes();
-    let be_input = one.to_be_bytes();
-
-    let hash5 = hasher.hash_bytes_le(&[&le_input, &le_input]).unwrap();
-    let mut hash6 = hasher.hash_bytes_be(&[&be_input, &be_input]).unwrap();
-
-    assert_ne!(hash5, hash6);
-
-    // Make it little-endian,
-    hash6.reverse();
-
-    // Compare the latest hashes.
-    assert_eq!(hash5, hash6);
 }
 
 /// Checks whether providing an empty input results in an error.
@@ -790,5 +674,201 @@ fn test_circom_t_0_fails() {
                 max_limit: 13
             }
         );
+    }
+}
+
+/// Checks whether collision attempts with padding in big-endian inputs is
+/// prevented by enforcing the input size.
+#[test]
+fn test_poseidon_bn254_padding_collision_be() {
+    let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
+
+    // Correct 32-byte inputs with explicit padding.
+    let res = hasher.hash_bytes_be(&[
+        &[
+            0, 0, 0, 1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1,
+        ],
+        &[
+            0, 0, 0, 1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1,
+        ],
+    ]);
+    assert!(res.is_ok());
+
+    // Manual attempts to cause collision by passing shorter inputs.
+    let res = hasher.hash_bytes_be(&[
+        &[
+            0, 0, 1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1,
+        ],
+        &[
+            0, 0, 1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1,
+        ],
+    ]);
+    assert!(matches!(
+        res,
+        Err(PoseidonError::InvalidInputLength {
+            len: 31,
+            modulus_bytes_len: 32
+        })
+    ));
+    let res = hasher.hash_bytes_be(&[
+        &[
+            0, 1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1,
+        ],
+        &[
+            0, 1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1,
+        ],
+    ]);
+    assert!(matches!(
+        res,
+        Err(PoseidonError::InvalidInputLength {
+            len: 30,
+            modulus_bytes_len: 32
+        })
+    ));
+    let res = hasher.hash_bytes_be(&[
+        &[
+            1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        ],
+        &[
+            1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        ],
+    ]);
+    assert!(matches!(
+        res,
+        Err(PoseidonError::InvalidInputLength {
+            len: 29,
+            modulus_bytes_len: 32
+        })
+    ));
+
+    // Brute-force attempts to cause collision.
+    for ones in 1..31 {
+        // Valid 32-byte input.
+        let mut input = vec![0; 32];
+        for byte in input.iter_mut().rev().take(ones) {
+            *byte = 1;
+        }
+        let res = hasher.hash_bytes_be(&[&input, &input]);
+        assert!(res.is_ok());
+
+        // Invalid shorter inputs.
+        for len in ones..31 {
+            let mut input = vec![0; len];
+            for byte in input.iter_mut().rev().take(ones) {
+                *byte = 1;
+            }
+            let res = hasher.hash_bytes_be(&[&input]);
+            assert!(matches!(
+                res,
+                Err(PoseidonError::InvalidInputLength {
+                    len: _,
+                    modulus_bytes_len: 32
+                })
+            ));
+        }
+    }
+}
+
+/// Checks whether collision attempts with padding in big-endian inputs is
+/// prevented by enforcing the input size.
+#[test]
+fn test_poseidon_bn254_padding_collision_le() {
+    let mut hasher = Poseidon::<Fr>::new_circom(2).unwrap();
+
+    // Correct 32-byte inputs with explicit padding.
+    let res = hasher.hash_bytes_le(&[
+        &[
+            1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 0, 0, 0,
+        ],
+        &[
+            1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 0, 0, 0,
+        ],
+    ]);
+    assert!(res.is_ok());
+
+    // Manual attempts to cause collision by passing shorter inputs.
+    let res = hasher.hash_bytes_le(&[
+        &[
+            1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 0, 0,
+        ],
+        &[
+            1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 0, 0,
+        ],
+    ]);
+    assert!(matches!(
+        res,
+        Err(PoseidonError::InvalidInputLength {
+            len: 31,
+            modulus_bytes_len: 32
+        })
+    ));
+    let res = hasher.hash_bytes_le(&[
+        &[
+            1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 0,
+        ],
+        &[
+            1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 0,
+        ],
+    ]);
+    assert!(matches!(
+        res,
+        Err(PoseidonError::InvalidInputLength {
+            len: 30,
+            modulus_bytes_len: 32
+        })
+    ));
+    let res = hasher.hash_bytes_le(&[
+        &[
+            1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        ],
+        &[
+            1u8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        ],
+    ]);
+    assert!(matches!(
+        res,
+        Err(PoseidonError::InvalidInputLength {
+            len: 29,
+            modulus_bytes_len: 32
+        })
+    ));
+
+    // Brute-force attempts to cause collision.
+    for ones in 1..31 {
+        // Valid 32-byte input.
+        let mut input = vec![0; 32];
+        for byte in input.iter_mut().take(ones) {
+            *byte = 1;
+        }
+        let res = hasher.hash_bytes_le(&[&input, &input]);
+        assert!(res.is_ok());
+
+        // Invalid shorter inputs.
+        for len in ones..31 {
+            let mut input = vec![0; len];
+            for byte in input.iter_mut().take(ones) {
+                *byte = 1;
+            }
+            let res = hasher.hash_bytes_le(&[&input]);
+            assert!(matches!(
+                res,
+                Err(PoseidonError::InvalidInputLength {
+                    len: _,
+                    modulus_bytes_len: 32
+                })
+            ));
+        }
     }
 }

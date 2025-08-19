@@ -455,7 +455,7 @@ pub fn validate_bytes_length<F>(input: &[u8]) -> Result<&[u8], PoseidonError>
 where
     F: PrimeField,
 {
-    let modulus_bytes_len = ((F::MODULUS_BIT_SIZE + 7) / 8) as usize;
+    let modulus_bytes_len = F::MODULUS_BIT_SIZE.div_ceil(8) as usize;
     if input.is_empty() {
         return Err(PoseidonError::EmptyInput);
     }

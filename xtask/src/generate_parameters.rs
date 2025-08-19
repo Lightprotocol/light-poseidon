@@ -210,24 +210,24 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
             }
         }
         code += &format!(
-            "return Ok(crate::PoseidonParameters::new(
+            "Ok(crate::PoseidonParameters::new(
             ark,
             mds,
             FULL_ROUNDS,
             PARTIAL_ROUNDS[{}],
             t.into(),
             ALPHA,
-            ));\n",
+            ))\n",
             t - 2
         );
 
         code += "\t}\n";
     }
     code += "else {
-        return Err(PoseidonError::InvalidWidthCircom {
+        Err(PoseidonError::InvalidWidthCircom {
             width: t as usize,
             max_limit: 13usize,
-        });\n
+        })\n
     }";
     code += "}\n";
 

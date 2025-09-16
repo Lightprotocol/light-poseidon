@@ -3,3 +3,4 @@ members = [
     "light-poseidon",
     "xtask",
 ]
+resolver = "2"

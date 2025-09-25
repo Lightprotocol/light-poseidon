@@ -469,9 +469,9 @@ where
 }
 
 macro_rules! impl_bytes_to_prime_field_element {
-    ($name:ident, $from_bytes_method:ident, $endianess:expr) => {
+    ($name:ident, $from_bytes_method:ident, $endianness:expr) => {
         #[doc = "Converts a slice of "]
-        #[doc = $endianess]
+        #[doc = $endianness]
         #[doc = "-endian bytes into a prime field element, \
                  represented by the [`ark_ff::PrimeField`](ark_ff::PrimeField) trait."]
         pub fn $name<F>(input: &[u8]) -> Result<F, PoseidonError>

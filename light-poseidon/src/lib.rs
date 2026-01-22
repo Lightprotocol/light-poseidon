@@ -377,8 +377,8 @@ impl<F: PrimeField> Poseidon<F> {
         for i in 0..width {
             let mut acc = F::zero();
             let row = &self.params.mds[i];
-            for j in 0..width {
-                acc += self.state[j] * row[j];
+            for (j, value) in row.iter().enumerate() {
+                acc += self.state[j] * *value;
             }
             self.scratch[i] = acc;
         }

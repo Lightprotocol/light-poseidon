@@ -65,7 +65,7 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .output()
-            .map_err(|e| anyhow::format_err!("git clone failed: {}", e.to_string()))?;
+            .map_err(|e| anyhow::format_err!("git clone failed: {}", e))?;
     }
     if !Path::new("./target/params").exists() {
         let _mkdir_result = std::process::Command::new("mkdir")
@@ -73,7 +73,7 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .output()
-            .map_err(|e| anyhow::format_err!("mkdir failed: {}", e.to_string()))?;
+            .map_err(|e| anyhow::format_err!("mkdir failed: {}", e))?;
     }
     for i in 2..14 {
         let path = format!("./target/params/poseidon_params_bn254_x5_{}", i);
@@ -240,7 +240,7 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
     std::process::Command::new("cargo")
         .arg("fmt")
         .output()
-        .map_err(|e| anyhow::format_err!("cargo fmt failed: {}", e.to_string()))?;
+        .map_err(|e| anyhow::format_err!("cargo fmt failed: {}", e))?;
     Ok(())
 }
 

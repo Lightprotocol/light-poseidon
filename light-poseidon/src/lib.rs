@@ -313,6 +313,7 @@ pub struct Poseidon<F: PrimeField> {
     params: PoseidonParameters<F>,
     domain_tag: F,
     state: Vec<F>,
+    scratch: Vec<F>,
 }
 
 impl<F: PrimeField> Poseidon<F> {
@@ -330,43 +331,66 @@ impl<F: PrimeField> Poseidon<F> {
             domain_tag,
             params,
             state: Vec::with_capacity(width),
+            scratch: Vec::with_capacity(width),
         }
     }
 
     #[inline(always)]
     fn apply_ark(&mut self, round: usize) {
-        self.state.iter_mut().enumerate().for_each(|(i, a)| {
-            let c = self.params.ark[round * self.params.width + i];
-            *a += c;
-        });
+        let width = self.params.width;
+        let base = round * width;
+        for i in 0..width {
+            self.state[i] += self.params.ark[base + i];
+        }
     }
 
     #[inline(always)]
     fn apply_sbox_full(&mut self) {
+        let alpha = self.params.alpha;
         self.state.iter_mut().for_each(|a| {
-            *a = a.pow([self.params.alpha]);
+            let value = *a;
+            *a = if alpha == 5 {
+                pow5(value)
+            } else {
+                value.pow([alpha])
+            };
         });
     }
 
     #[inline(always)]
     fn apply_sbox_partial(&mut self) {
-        self.state[0] = self.state[0].pow([self.params.alpha]);
+        let alpha = self.params.alpha;
+        let value = self.state[0];
+        self.state[0] = if alpha == 5 {
+            pow5(value)
+        } else {
+            value.pow([alpha])
+        };
     }
 
     #[inline(always)]
     fn apply_mds(&mut self) {
-        self.state = self
-            .state
-            .iter()
-            .enumerate()
-            .map(|(i, _)| {
-                self.state
-                    .iter()
-                    .enumerate()
-                    .fold(F::zero(), |acc, (j, a)| acc + *a * self.params.mds[i][j])
-            })
-            .collect();
+        let width = self.params.width;
+        if self.scratch.len() != width {
+            self.scratch.resize(width, F::zero());
+        }
+        for i in 0..width {
+            let mut acc = F::zero();
+            let row = &self.params.mds[i];
+            for j in 0..width {
+                acc += self.state[j] * row[j];
+            }
+            self.scratch[i] = acc;
+        }
+        std::mem::swap(&mut self.state, &mut self.scratch);
     }
+}
+
+#[inline(always)]
+fn pow5<F: PrimeField>(value: F) -> F {
+    let square = value.square();
+    let fourth = square.square();
+    fourth * value
 }
 
 impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {

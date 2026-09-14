@@ -130,12 +130,14 @@
 //! read the audit report [here](https://github.com/Lightprotocol/light-poseidon/blob/main/assets/audit.pdf).
 use ark_bn254::Fr;
 use ark_ff::{BigInteger, PrimeField, Zero};
+use arrayvec::ArrayVec;
 use thiserror::Error;
 
 pub mod parameters;
 
 pub const HASH_LEN: usize = 32;
 pub const MAX_X5_LEN: usize = 13;
+pub const MAX_INPUTS: usize = 12;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum PoseidonError {
@@ -312,7 +314,7 @@ pub trait PoseidonBytesHasher {
 pub struct Poseidon<F: PrimeField> {
     params: PoseidonParameters<F>,
     domain_tag: F,
-    state: Vec<F>,
+    state: ArrayVec<F, MAX_X5_LEN>,
 }
 
 impl<F: PrimeField> Poseidon<F> {
@@ -325,12 +327,22 @@ impl<F: PrimeField> Poseidon<F> {
     }
 
     fn with_domain_tag(params: PoseidonParameters<F>, domain_tag: F) -> Self {
-        let width = params.width;
         Self {
             domain_tag,
             params,
-            state: Vec::with_capacity(width),
+            state: ArrayVec::new(),
         }
+    }
+
+    fn validate_inputs_length<T>(&self, inputs: &[T]) -> Result<(), PoseidonError> {
+        if inputs.len() != self.params.width - 1 {
+            return Err(PoseidonError::InvalidNumberOfInputs {
+                inputs: inputs.len(),
+                max_limit: self.params.width - 1,
+                width: self.params.width,
+            });
+        }
+        Ok(())
     }
 
     #[inline(always)]
@@ -388,14 +400,7 @@ impl<F: PrimeField> Poseidon<F> {
 
 impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
     fn hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError> {
-        if inputs.len() != self.params.width - 1 {
-            return Err(PoseidonError::InvalidNumberOfInputs {
-                inputs: inputs.len(),
-                max_limit: self.params.width - 1,
-                width: self.params.width,
-            });
-        }
-
+        self.validate_inputs_length(&inputs)?;
         self.state.push(self.domain_tag);
 
         for input in inputs {
@@ -433,17 +438,13 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
 macro_rules! impl_hash_bytes {
     ($fn_name:ident, $bytes_to_prime_field_element_fn:ident, $to_bytes_fn:ident) => {
         fn $fn_name(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
-            let inputs: Result<Vec<_>, _> = inputs
-                .iter()
-                .map(|input| validate_bytes_length::<F>(input))
-                .collect();
-            let inputs = inputs?;
-            let inputs: Result<Vec<_>, _> = inputs
-                .iter()
-                .map(|input| $bytes_to_prime_field_element_fn(input))
-                .collect();
-            let inputs = inputs?;
-            let hash = self.hash(&inputs)?;
+            let mut deserialized_inputs: ArrayVec<F, MAX_INPUTS> = ArrayVec::new();
+            for input in inputs {
+                validate_bytes_length::<F>(input)?;
+                let deserialized_input = $bytes_to_prime_field_element_fn(input)?;
+                deserialized_inputs.push(deserialized_input);
+            }
+            let hash = self.hash(deserialized_inputs.as_slice())?;
 
             hash.into_bigint()
                 .$to_bytes_fn()
@@ -468,7 +469,7 @@ impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
 /// to collisions. The purpose of this function is to prevent them by returning
 /// and error. It should be always used before converting byte slices to
 /// prime field elements.
-pub fn validate_bytes_length<F>(input: &[u8]) -> Result<&[u8], PoseidonError>
+pub fn validate_bytes_length<F>(input: &[u8]) -> Result<(), PoseidonError>
 where
     F: PrimeField,
 {
@@ -482,7 +483,7 @@ where
             modulus_bytes_len,
         });
     }
-    Ok(input)
+    Ok(())
 }
 
 macro_rules! impl_bytes_to_prime_field_element {

@@ -177,8 +177,7 @@ fn test_poseidon_bn254_x5_fq_validate_bytes_length() {
     }
 
     let input = vec![1u8; 32];
-    let res = validate_bytes_length::<Fr>(&input).unwrap();
-    assert_eq!(res, &input);
+    validate_bytes_length::<Fr>(&input).unwrap();
 
     for i in 33..64 {
         let input = vec![1u8; i];

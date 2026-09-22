@@ -8,11 +8,14 @@ readme = "../README.md"
 keywords = ["cryptography", "hash", "poseidon", "zero-knowledge", "zkSNARK"]
 license = "Apache-2.0"
 edition = "2021"
+# `slice::as_chunks` / `as_chunks_mut`, used in the byte serialization path,
+# are stable since 1.88.0. Without this a downstream on an older toolchain
+# gets "no method named `as_chunks_mut`" with no hint that it is an MSRV issue.
+rust-version = "1.88"
 
 [dependencies]
 ark-bn254 = "0.5.0"
 ark-ff = "0.5.0"
-num-bigint = "0.4.4"
 thiserror = "1.0"
 
 [dev-dependencies]

@@ -404,7 +404,7 @@ impl<F: PrimeField> Poseidon<F> {
     /// Returns a new Poseidon hasher based on the given parameters, with a zero
     /// domain tag.
     ///
-    /// Returns [`PoseidonError::InvalidWidth`] for a width outside
+    /// Returns [`PoseidonError::InvalidWidthCircom`] for a width outside
     /// `2..=MAX_X5_LEN`. That bound is what lets the permutation keep its state
     /// in a fixed-size stack array; rejecting here means no later operation can
     /// overrun it.
@@ -742,13 +742,18 @@ impl<F: PrimeField> Poseidon<F> {
         nr_inputs: usize,
         domain_tag: Fr,
     ) -> Result<Poseidon<Fr>, PoseidonError> {
-        let width = nr_inputs + 1;
-        if width > MAX_X5_LEN {
-            return Err(PoseidonError::InvalidWidthCircom {
-                width,
-                max_limit: MAX_X5_LEN,
-            });
-        }
+        // `nr_inputs` is caller-supplied, so this add is checked: with
+        // `overflow-checks = true`, which Agave's release profile sets,
+        // `usize::MAX` would otherwise abort rather than return an error.
+        let width = match nr_inputs.checked_add(1) {
+            Some(width) if width <= MAX_X5_LEN => width,
+            _ => {
+                return Err(PoseidonError::InvalidWidthCircom {
+                    width: nr_inputs.saturating_add(1),
+                    max_limit: MAX_X5_LEN,
+                })
+            }
+        };
 
         let params = crate::parameters::bn254_x5::get_poseidon_parameters(
             (width).try_into().map_err(|_| PoseidonError::U64Tou8)?,

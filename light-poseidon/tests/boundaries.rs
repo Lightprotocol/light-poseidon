@@ -39,7 +39,17 @@ fn new_circom_accepts_every_supported_width() {
 
 #[test]
 fn new_circom_rejects_widths_past_the_limit() {
-    for nr_inputs in [MAX_X5_LEN, MAX_X5_LEN + 1, 32, 1000] {
+    // usize::MAX is included because `width = nr_inputs + 1` would otherwise
+    // overflow, which aborts under `overflow-checks = true` rather than
+    // returning an error. Agave's release profile enables those checks.
+    for nr_inputs in [
+        MAX_X5_LEN,
+        MAX_X5_LEN + 1,
+        32,
+        1000,
+        usize::MAX - 1,
+        usize::MAX,
+    ] {
         let result = Poseidon::<Fr>::new_circom(nr_inputs);
         assert!(
             matches!(result, Err(PoseidonError::InvalidWidthCircom { .. })),

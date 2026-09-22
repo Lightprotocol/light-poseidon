@@ -1,6 +1,7 @@
 use clap::Parser;
 
 mod generate_parameters;
+mod sparse_mds;
 
 #[derive(Parser)]
 pub struct XtaskOptions {
@@ -11,6 +12,7 @@ pub struct XtaskOptions {
 #[derive(Parser)]
 enum Command {
     GeneratePoseidonParameters(generate_parameters::Options),
+    GenerateSparseMdsParameters(sparse_mds::generate::Options),
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -19,6 +21,9 @@ fn main() -> Result<(), anyhow::Error> {
     match opts.command {
         Command::GeneratePoseidonParameters(opts) => {
             generate_parameters::generate_parameters(opts)?
+        }
+        Command::GenerateSparseMdsParameters(opts) => {
+            sparse_mds::generate::generate_sparse_mds_parameters(opts)?
         }
     }
 

@@ -129,9 +129,16 @@ fn hashing_with_a_truncated_mds_errors_instead_of_panicking() {
 
     let mut hasher = Poseidon::new(params).expect("width is in range");
     let result = hasher.hash(&[Fr::zero(), Fr::zero()]);
-    assert!(
-        matches!(result, Err(PoseidonError::InvalidWidthCircom { .. })),
-        "expected a dimension error, got {result:?}"
+    // Asserting the payload, not just the variant: the dimension failure and
+    // the out-of-range-width failure share `InvalidWidthCircom`, so only
+    // `width` distinguishes which one fired.
+    assert_eq!(
+        result,
+        Err(PoseidonError::InvalidWidthCircom {
+            width,
+            max_limit: MAX_X5_LEN,
+        }),
+        "a truncated MDS must be rejected at hash time"
     );
 }
 

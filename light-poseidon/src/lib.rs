@@ -185,7 +185,8 @@ pub enum PoseidonError {
 ///
 /// Callers supplying their own parameters need `'static` data as well; a set
 /// computed at run time can be promoted with [`Box::leak`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// `Copy` is load-bearing: `permute` destructures the parameters out of `&self`.
+#[derive(Clone, Copy, Debug)]
 pub struct PoseidonParameters<F: PrimeField> {
     /// Round constants, in round-major order: `width` constants per round, for
     /// `full_rounds + partial_rounds` rounds.
@@ -488,24 +489,32 @@ impl<F: PrimeField> Poseidon<F> {
             alpha,
         } = self.params;
 
-        // The constructor and `PoseidonParameters` validation make these
-        // unreachable; they exist so no path can panic on malformed input.
         let dimension_error = || PoseidonError::InvalidWidthCircom {
             width,
             max_limit: MAX_X5_LEN,
         };
 
-        if state.len() != width {
+        let half_rounds = full_rounds / 2;
+        let all_rounds = full_rounds.saturating_add(partial_rounds);
+
+        // Everything is checked once, here, so the loop body below can be total.
+        //
+        // This check is load-bearing, not defensive: `chunks_exact` and `zip`
+        // both stop at the shorter side, so without it a truncated `mds` would
+        // silently leave output lanes zero instead of being rejected -- the
+        // parameters would hash successfully with missing terms. `new_unchecked`
+        // is public, so malformed parameters can reach this point.
+        if state.len() != width
+            || width == 0
+            || mds.len() != width.saturating_mul(width)
+            || ark.len() != width.saturating_mul(all_rounds)
+        {
             return Err(dimension_error());
         }
 
         let mut scratch = [F::zero(); MAX_X5_LEN];
-        let mut round_constants = ark.chunks_exact(width);
-        let half_rounds = full_rounds / 2;
-        let all_rounds = full_rounds.saturating_add(partial_rounds);
 
-        for round in 0..all_rounds {
-            let constants = round_constants.next().ok_or_else(dimension_error)?;
+        for (round, constants) in ark.chunks_exact(width).enumerate() {
             for (lane, constant) in state.iter_mut().zip(constants) {
                 *lane += *constant;
             }
@@ -520,11 +529,7 @@ impl<F: PrimeField> Poseidon<F> {
             }
 
             let next = scratch.get_mut(..width).ok_or_else(dimension_error)?;
-            for (i, out) in next.iter_mut().enumerate() {
-                let start = i.saturating_mul(width);
-                let row = mds
-                    .get(start..start.saturating_add(width))
-                    .ok_or_else(dimension_error)?;
+            for (out, row) in next.iter_mut().zip(mds.chunks_exact(width)) {
                 *out = state
                     .iter()
                     .zip(row)
@@ -551,39 +556,30 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
     }
 }
 
-/// Writes a canonical integer into a fixed-size byte array, most significant
-/// limb first, without allocating.
-fn bigint_to_hash_bytes_be<F: PrimeField>(
-    value: F::BigInt,
-) -> Result<[u8; HASH_LEN], PoseidonError> {
-    let limbs: &[u64] = value.as_ref();
-    if limbs.len().saturating_mul(8) != HASH_LEN {
-        return Err(PoseidonError::VecToArray);
-    }
-    let mut out = [0u8; HASH_LEN];
-    let (chunks, _rest) = out.as_chunks_mut::<8>();
-    for (chunk, limb) in chunks.iter_mut().zip(limbs.iter().rev()) {
-        *chunk = limb.to_be_bytes();
-    }
-    Ok(out)
+macro_rules! impl_bigint_to_hash_bytes {
+    ($name:ident, $limb_order:ident, $limb_to_bytes:ident, $endianness:expr) => {
+        #[doc = "Writes a canonical integer into a fixed-size byte array, "]
+        #[doc = $endianness]
+        #[doc = "-endian, without allocating."]
+        fn $name<F: PrimeField>(value: F::BigInt) -> Result<[u8; HASH_LEN], PoseidonError> {
+            let limbs: &[u64] = value.as_ref();
+            if limbs.len().saturating_mul(8) != HASH_LEN {
+                return Err(PoseidonError::VecToArray);
+            }
+            let mut out = [0u8; HASH_LEN];
+            let (chunks, _rest) = out.as_chunks_mut::<8>();
+            for (chunk, limb) in chunks.iter_mut().zip(limbs.iter().$limb_order()) {
+                *chunk = limb.$limb_to_bytes();
+            }
+            Ok(out)
+        }
+    };
 }
 
-/// Writes a canonical integer into a fixed-size byte array, least significant
-/// limb first, without allocating.
-fn bigint_to_hash_bytes_le<F: PrimeField>(
-    value: F::BigInt,
-) -> Result<[u8; HASH_LEN], PoseidonError> {
-    let limbs: &[u64] = value.as_ref();
-    if limbs.len().saturating_mul(8) != HASH_LEN {
-        return Err(PoseidonError::VecToArray);
-    }
-    let mut out = [0u8; HASH_LEN];
-    let (chunks, _rest) = out.as_chunks_mut::<8>();
-    for (chunk, limb) in chunks.iter_mut().zip(limbs.iter()) {
-        *chunk = limb.to_le_bytes();
-    }
-    Ok(out)
-}
+// Limbs are stored least significant first, so the big-endian encoding walks
+// them in reverse and the little-endian one in order.
+impl_bigint_to_hash_bytes!(bigint_to_hash_bytes_be, rev, to_be_bytes, "big");
+impl_bigint_to_hash_bytes!(bigint_to_hash_bytes_le, into_iter, to_le_bytes, "little");
 
 macro_rules! impl_hash_bytes {
     ($fn_name:ident, $bytes_to_prime_field_element_fn:ident, $to_bytes_fn:ident) => {

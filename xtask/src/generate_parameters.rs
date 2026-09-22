@@ -250,6 +250,16 @@ fn get_fr_string(string: &str) -> String {
     let mut bytes = hex::decode(string.split_at(2).1).unwrap();
     bytes.reverse();
 
+    // A short input would leave the high limbs zero and emit a wrong constant.
+    // Fail loudly instead: a silently incorrect parameter is far worse than a
+    // crashed generator.
+    assert_eq!(
+        bytes.len(),
+        32,
+        "expected a 32-byte field constant, got {} bytes from {string}",
+        bytes.len()
+    );
+
     let mut limbs = [0u64; 4];
     let (chunks, _rest) = bytes.as_chunks::<8>();
     for (limb, chunk) in limbs.iter_mut().zip(chunks) {

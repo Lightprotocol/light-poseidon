@@ -16,17 +16,11 @@ use light_poseidon::{Poseidon, PoseidonBytesHasher, PoseidonHasher};
 include!("fixtures/reference_vectors.rs");
 
 fn from_hex(s: &str) -> Vec<u8> {
-    assert!(s.len().is_multiple_of(2), "odd-length hex: {s}");
-    (0..s.len() / 2)
-        .map(|i| {
-            let byte = s.get(i * 2..i * 2 + 2).expect("hex pair in range");
-            u8::from_str_radix(byte, 16).expect("valid hex")
-        })
-        .collect()
+    hex::decode(s).expect("valid hex")
 }
 
 fn to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    hex::encode(bytes)
 }
 
 fn be_bytes_to_fr(bytes: &[u8]) -> Fr {
@@ -106,8 +100,23 @@ fn hash_bytes_le_matches_frozen_oracle() {
 
 #[test]
 fn repeated_hashing_is_stable() {
-    // A reused hasher must produce the same result every time.
-    for (width, inputs_hex, expected_be, _) in VECTORS.iter().take(12) {
+    // A reused hasher must produce the same result every time. One vector per
+    // width, so this covers 2..=13 rather than repeating a single width.
+    let mut seen = Vec::new();
+    let per_width: Vec<_> = VECTORS
+        .iter()
+        .filter(|(width, ..)| {
+            if seen.contains(width) {
+                false
+            } else {
+                seen.push(*width);
+                true
+            }
+        })
+        .collect();
+    assert_eq!(per_width.len(), 12, "expected one vector per width");
+
+    for (width, inputs_hex, expected_be, _) in per_width {
         let inputs: Vec<Fr> = inputs_hex
             .iter()
             .map(|h| be_bytes_to_fr(&from_hex(h)))

@@ -26,3 +26,7 @@ harness = false
 [[bench]]
 name = "sparse_mds"
 harness = false
+
+[[bench]]
+name = "experiments"
+harness = false

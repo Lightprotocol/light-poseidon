@@ -341,16 +341,33 @@ impl<F: PrimeField> Poseidon<F> {
         });
     }
 
+    /// Raises `a` to the S-box exponent. `Field::pow` is a generic binary
+    /// exponentiation (3 squarings + 2 multiplications for x^5), so the
+    /// common exponents get explicit, shorter squaring/multiplication chains.
+    #[inline(always)]
+    fn sbox(a: F, alpha: u64) -> F {
+        match alpha {
+            5 => {
+                let x2 = a.square();
+                let x4 = x2.square();
+                x4 * a
+            }
+            4 => a.square().square(),
+            _ => a.pow([alpha]),
+        }
+    }
+
     #[inline(always)]
     fn apply_sbox_full(&mut self) {
+        let alpha = self.params.alpha;
         self.state.iter_mut().for_each(|a| {
-            *a = a.pow([self.params.alpha]);
+            *a = Self::sbox(*a, alpha);
         });
     }
 
     #[inline(always)]
     fn apply_sbox_partial(&mut self) {
-        self.state[0] = self.state[0].pow([self.params.alpha]);
+        self.state[0] = Self::sbox(self.state[0], self.params.alpha);
     }
 
     #[inline(always)]

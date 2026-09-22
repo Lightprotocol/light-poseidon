@@ -42,7 +42,7 @@ fn every_bundled_width_has_a_factorization() {
         assert_eq!(sparse.pre.len(), params.width * params.width);
         assert_eq!(
             sparse.matrices.len(),
-            params.partial_rounds * (2 * params.width - 1)
+            params.partial_rounds * (2 * params.width - 2)
         );
         assert_eq!(sparse.ark.len(), params.partial_rounds);
         assert_eq!(sparse.post.len(), params.width);
@@ -198,6 +198,14 @@ fn too_few_full_rounds_is_rejected() {
 #[test]
 fn empty_sparse_parameters_are_rejected() {
     let params = bn254_x5::get_poseidon_parameters(3).unwrap();
-    let empty: SparseMdsParameters<Fr> = SparseMdsParameters::new_unchecked(&[], &[], &[], &[]);
+    // `lambda_end` is never read for empty parameters: `fits` rejects them
+    // before the permutation runs. Any reference satisfies the signature.
+    let empty: SparseMdsParameters<Fr> = SparseMdsParameters::new_unchecked(
+        &[],
+        &[],
+        &[],
+        &[],
+        &bn254_x5_sparse::LAMBDA_END_3,
+    );
     assert!(params.with_sparse_mds(empty).is_err());
 }

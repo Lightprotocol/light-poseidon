@@ -94,34 +94,44 @@ fn full_round_w<const W: usize>(
 /// Every partial round through the sparse factorization; see
 /// `partial_rounds_sparse_w` in `lib.rs`.
 #[inline(always)]
-fn partial_rounds_sparse_w<const W: usize>(
+fn partial_rounds_sparse_w<const W: usize, const WM1: usize>(
     state: &mut [Fr; W],
     sparse: &SparseMdsParameters<Fr>,
     alpha: u64,
 ) {
-    let entries_per_matrix = 2 * W - 1;
+    let entries_per_matrix = 2 * WM1;
 
+    // Lane 0 is a local across the block: it is the serial dependency
+    // chain, and keeping it in a register rather than a memory slot
+    // keeps the chain short. Nothing else reads `state[0]` until the
+    // block ends.
+    let Some(mut head) = state.first().copied() else {
+        return;
+    };
     for (constant, matrix) in sparse
         .ark
         .iter()
         .zip(sparse.matrices.chunks_exact(entries_per_matrix))
     {
-        state[0] = sbox(state[0] + *constant, alpha);
-
-        if let Some(row) = matrix
-            .get(..W)
-            .and_then(|row| <&[Fr; W]>::try_from(row).ok())
-        {
-            let column = matrix.get(W..).unwrap_or(&[]);
-            let head = state[0];
-            let mixed = Fr::sum_of_products(state, row);
+        if let (Some(rest), Some(tail)) = (
+            matrix
+                .get(..WM1)
+                .and_then(|rest| <&[Fr; WM1]>::try_from(rest).ok()),
+            state
+                .get(1..)
+                .and_then(|tail| <&[Fr; WM1]>::try_from(tail).ok()),
+        ) {
+            let column = matrix.get(WM1..).unwrap_or(&[]);
+            let rest_dot = Fr::sum_of_products(tail, rest);
+            head = sbox(head + *constant, alpha);
             for (lane, coefficient) in state.iter_mut().skip(1).zip(column) {
                 *lane += head * *coefficient;
             }
-            state[0] = mixed;
+            head += rest_dot;
         }
     }
 
+    state[0] = head * *sparse.lambda_end;
     for (lane, constant) in state.iter_mut().zip(sparse.post.iter()) {
         *lane += *constant;
     }
@@ -134,7 +144,7 @@ fn partial_rounds_sparse_w<const W: usize>(
 /// there, the dispatcher becomes one enormous function and the individual
 /// permutation bodies optimize measurably worse.
 #[inline(never)]
-fn permute_w<const W: usize>(
+fn permute_w<const W: usize, const WM1: usize>(
     params: &PoseidonParameters<Fr>,
     state: &mut [Fr],
 ) -> Result<Fr, PoseidonError> {
@@ -184,7 +194,7 @@ fn permute_w<const W: usize>(
     // sparse form; without one, each round applies the S-box to lane zero
     // alone but still multiplies by the full MDS matrix.
     match sparse {
-        Some(sparse) => partial_rounds_sparse_w(state, &sparse, alpha),
+        Some(sparse) => partial_rounds_sparse_w::<W, WM1>(state, &sparse, alpha),
         None => {
             let partial_ark = ark_rounds
                 .get(half_rounds..half_rounds.saturating_add(partial_rounds))
@@ -243,14 +253,29 @@ pub fn permute(params: &PoseidonParameters<Fr>, state: &mut [Fr]) -> Result<Fr, 
     };
 
     macro_rules! dispatch {
-        ($($w:literal),+ $(,)?) => {
+        ($(($w:literal, $wm1:literal)),+ $(,)?) => {
             match width {
-                $($w => permute_w::<$w>(params, state),)+
+                $($w => permute_w::<$w, $wm1>(params, state),)+
                 _ => Err(dimension_error()),
             }
         };
     }
-    dispatch!(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
+    // `WM1` is `W - 1`: the partial rounds take a dot product over lanes
+    // 1.., and stable Rust cannot express `W - 1` as a const generic.
+    dispatch!(
+        (2, 1),
+        (3, 2),
+        (4, 3),
+        (5, 4),
+        (6, 5),
+        (7, 6),
+        (8, 7),
+        (9, 8),
+        (10, 9),
+        (11, 10),
+        (12, 11),
+        (13, 12)
+    )
 }
 
 #[cfg(test)]
@@ -282,18 +307,18 @@ mod tests {
                 let mut state = [Fr::zero(); MAX_X5_LEN];
                 state[1..=inputs].copy_from_slice(&input);
                 let generic = match width {
-                    2 => hasher.permute_w::<2>(&mut state[..width]),
-                    3 => hasher.permute_w::<3>(&mut state[..width]),
-                    4 => hasher.permute_w::<4>(&mut state[..width]),
-                    5 => hasher.permute_w::<5>(&mut state[..width]),
-                    6 => hasher.permute_w::<6>(&mut state[..width]),
-                    7 => hasher.permute_w::<7>(&mut state[..width]),
-                    8 => hasher.permute_w::<8>(&mut state[..width]),
-                    9 => hasher.permute_w::<9>(&mut state[..width]),
-                    10 => hasher.permute_w::<10>(&mut state[..width]),
-                    11 => hasher.permute_w::<11>(&mut state[..width]),
-                    12 => hasher.permute_w::<12>(&mut state[..width]),
-                    13 => hasher.permute_w::<13>(&mut state[..width]),
+                    2 => hasher.permute_w::<2, 1>(&mut state[..width]),
+                    3 => hasher.permute_w::<3, 2>(&mut state[..width]),
+                    4 => hasher.permute_w::<4, 3>(&mut state[..width]),
+                    5 => hasher.permute_w::<5, 4>(&mut state[..width]),
+                    6 => hasher.permute_w::<6, 5>(&mut state[..width]),
+                    7 => hasher.permute_w::<7, 6>(&mut state[..width]),
+                    8 => hasher.permute_w::<8, 7>(&mut state[..width]),
+                    9 => hasher.permute_w::<9, 8>(&mut state[..width]),
+                    10 => hasher.permute_w::<10, 9>(&mut state[..width]),
+                    11 => hasher.permute_w::<11, 10>(&mut state[..width]),
+                    12 => hasher.permute_w::<12, 11>(&mut state[..width]),
+                    13 => hasher.permute_w::<13, 12>(&mut state[..width]),
                     other => panic!("unexpected width {other}"),
                 }
                 .expect("generic permute");

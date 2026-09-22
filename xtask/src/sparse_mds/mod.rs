@@ -284,6 +284,81 @@ pub fn derive(params: &RoundParameters) -> Result<Optimized, anyhow::Error> {
     })
 }
 
+/// One partial round of the rescaled constants.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScaledRound {
+    /// The first row without its leading entry, rescaled: `row[1..] /
+    /// lambda_{i+1}`. `width - 1` entries.
+    pub rest: Vec<Fr>,
+    /// The first column below the diagonal, rescaled: `column * lambda_i^alpha`.
+    /// `width - 1` entries.
+    pub column: Vec<Fr>,
+}
+
+/// The rescaled constants for one width.
+///
+/// Lane 0 is carried through the partial rounds scaled by `1 / lambda_i`,
+/// exploiting `S(x / lambda) = S(x) / lambda^alpha` for the S-box exponent.
+/// Choosing `lambda_{i+1} = row_i[0] * lambda_i^alpha` makes the S-box
+/// output's coefficient in the next scaled lane 0 exactly 1, so the round's
+/// dot product runs over lanes 1.. only -- and does not depend on the S-box.
+/// The scale factors move into the round constants, the remaining row
+/// entries and the column; [`lambda_end`](Self::lambda_end) undoes the
+/// accumulated scaling after the last partial round.
+pub struct ScaledOptimized {
+    /// Rescaled folded constants: `ark[i] / lambda_i`, one per partial round.
+    pub ark: Vec<Fr>,
+    /// One scaled round per partial round, in application order.
+    pub rounds: Vec<ScaledRound>,
+    /// `lambda` after the last partial round; multiplied into lane 0 once to
+    /// restore its true value.
+    pub lambda_end: Fr,
+}
+
+/// Rescales the derived constants, as documented on [`ScaledOptimized`].
+///
+/// Fails when a leading row entry is zero, which would make the rescaling
+/// singular; no bundled width has one.
+pub fn derive_scaled(
+    params: &RoundParameters,
+    optimized: &Optimized,
+) -> Result<ScaledOptimized, anyhow::Error> {
+    let alpha = params.alpha;
+    let mut lambda = Fr::from(1u64);
+    let mut ark = Vec::with_capacity(optimized.ark.len());
+    let mut rounds = Vec::with_capacity(optimized.matrices.len());
+    for (constant, matrix) in optimized.ark.iter().zip(optimized.matrices.iter()) {
+        let row0 = matrix
+            .row
+            .first()
+            .ok_or_else(|| anyhow!("width {}: sparse matrix has an empty row", params.width))?;
+        let lambda_alpha = lambda.pow([alpha]);
+        let next = *row0 * lambda_alpha;
+        if next.is_zero() {
+            return Err(anyhow!(
+                "width {}: sparse matrix has a zero leading row entry, cannot rescale",
+                params.width
+            ));
+        }
+        let lambda_inv = lambda
+            .inverse()
+            .ok_or_else(|| anyhow!("zero accumulated scale factor"))?;
+        let next_inv = next
+            .inverse()
+            .ok_or_else(|| anyhow!("zero next scale factor"))?;
+        ark.push(*constant * lambda_inv);
+        let rest = matrix.row[1..].iter().map(|r| *r * next_inv).collect();
+        let column = matrix.column.iter().map(|c| *c * lambda_alpha).collect();
+        rounds.push(ScaledRound { rest, column });
+        lambda = next;
+    }
+    Ok(ScaledOptimized {
+        ark,
+        rounds,
+        lambda_end: lambda,
+    })
+}
+
 /// Raises `a` to the S-box exponent.
 fn sbox(a: Fr, alpha: u64) -> Fr {
     match alpha {
@@ -373,6 +448,85 @@ pub fn permute_optimized(
         *head = sbox(*head + *constant, params.alpha);
         matrix.apply(state)?;
     }
+    for (value, constant) in state.iter_mut().zip(optimized.post.iter()) {
+        *value += *constant;
+    }
+
+    // Second half of the full rounds, unchanged.
+    for round in half_rounds + params.partial_rounds..all_rounds {
+        let round_ark = params.ark_round(round)?;
+        for (value, constant) in state.iter_mut().zip(round_ark.iter()) {
+            *value += *constant;
+        }
+        for value in state.iter_mut() {
+            *value = sbox(*value, params.alpha);
+        }
+        let mixed = params.mds.mul_vec(state)?;
+        state.copy_from_slice(&mixed);
+    }
+    Ok(())
+}
+
+/// The scaled permutation: `permute_optimized` with the rescaled partial
+/// block. Shares the full-round halves with it.
+pub fn permute_scaled(
+    params: &RoundParameters,
+    optimized: &Optimized,
+    scaled: &ScaledOptimized,
+    state: &mut [Fr],
+) -> Result<(), anyhow::Error> {
+    if state.len() != params.width {
+        return Err(anyhow!(
+            "state of length {} does not match width {}",
+            state.len(),
+            params.width
+        ));
+    }
+    let all_rounds = params.full_rounds + params.partial_rounds;
+    let half_rounds = params.full_rounds / 2;
+
+    // First half of the full rounds, identical to `permute_optimized`.
+    for round in 0..half_rounds {
+        let round_ark = params.ark_round(round)?;
+        for (value, constant) in state.iter_mut().zip(round_ark.iter()) {
+            *value += *constant;
+        }
+        for value in state.iter_mut() {
+            *value = sbox(*value, params.alpha);
+        }
+        let matrix = if round + 1 == half_rounds {
+            &optimized.pre
+        } else {
+            &params.mds
+        };
+        let mixed = matrix.mul_vec(state)?;
+        state.copy_from_slice(&mixed);
+    }
+
+    // Partial rounds: the lanes-1.. dot product does not depend on the
+    // S-box; the leading row entry is 1 after rescaling.
+    for (constant, round) in scaled.ark.iter().zip(scaled.rounds.iter()) {
+        let mut rest_dot = Fr::zero();
+        for (value, coefficient) in state.iter().skip(1).zip(round.rest.iter()) {
+            rest_dot += *value * *coefficient;
+        }
+        let head = state
+            .first_mut()
+            .ok_or_else(|| anyhow!("empty state in a partial round"))?;
+        *head = sbox(*head + *constant, params.alpha);
+        let head = *head;
+        for (value, coefficient) in state.iter_mut().skip(1).zip(round.column.iter()) {
+            *value += head * *coefficient;
+        }
+        let slot = state
+            .first_mut()
+            .ok_or_else(|| anyhow!("empty state in a partial round"))?;
+        *slot = head + rest_dot;
+    }
+    let slot = state
+        .first_mut()
+        .ok_or_else(|| anyhow!("empty state after the partial rounds"))?;
+    *slot *= scaled.lambda_end;
     for (value, constant) in state.iter_mut().zip(optimized.post.iter()) {
         *value += *constant;
     }
@@ -503,12 +657,114 @@ pub fn verify(
     Ok(())
 }
 
-/// Formats one field element as a single-line `Fr::new(BigInteger256::new([..]))`.
-pub fn format_field_element(element: &Fr) -> String {
+/// Checks the rescaled constants against the derived ones and against the
+/// reference permutation.
+///
+/// The algebraic identities are checked in inverse-free form: with `lambda`
+/// replayed from the unscaled rows, `scaled.ark[i] * lambda_i == ark[i]`,
+/// `scaled.rest[i][j] * lambda_{i+1} == row_i[j + 1]` and
+/// `scaled.column[i][j] == column_i[j] * lambda_i^alpha`. End-to-end
+/// equality with the reference permutation is checked on the same samples
+/// as [`verify`].
+pub fn verify_scaled(
+    params: &RoundParameters,
+    optimized: &Optimized,
+    scaled: &ScaledOptimized,
+    rounds: usize,
+) -> Result<(), anyhow::Error> {
+    let width = params.width;
+
+    if scaled.rounds.len() != params.partial_rounds || scaled.ark.len() != params.partial_rounds {
+        return Err(anyhow!(
+            "width {width}: scaled constants cover {} rounds with {} constants, expected {}",
+            scaled.rounds.len(),
+            scaled.ark.len(),
+            params.partial_rounds
+        ));
+    }
+
+    let mut lambda = Fr::from(1u64);
+    for (i, (matrix, round)) in optimized
+        .matrices
+        .iter()
+        .zip(scaled.rounds.iter())
+        .enumerate()
+    {
+        if round.rest.len() + 1 != width || round.column.len() + 1 != width {
+            return Err(anyhow!(
+                "width {width}: scaled round {i} has wrong dimensions"
+            ));
+        }
+        if scaled.ark[i] * lambda != optimized.ark[i] {
+            return Err(anyhow!(
+                "width {width}: scaled round constant {i} does not match the derivation"
+            ));
+        }
+        let lambda_alpha = lambda.pow([params.alpha]);
+        let next = *matrix
+            .row
+            .first()
+            .ok_or_else(|| anyhow!("width {width}: sparse matrix {i} has an empty row"))?
+            * lambda_alpha;
+        for (j, (rest, row)) in round.rest.iter().zip(matrix.row[1..].iter()).enumerate() {
+            if *rest * next != *row {
+                return Err(anyhow!(
+                    "width {width}: scaled rest entry ({i}, {j}) does not match the derivation"
+                ));
+            }
+        }
+        for (j, (column, expected)) in round.column.iter().zip(matrix.column.iter()).enumerate() {
+            if *column != *expected * lambda_alpha {
+                return Err(anyhow!(
+                    "width {width}: scaled column entry ({i}, {j}) does not match the derivation"
+                ));
+            }
+        }
+        lambda = next;
+    }
+    if scaled.lambda_end != lambda {
+        return Err(anyhow!(
+            "width {width}: lambda_end does not match the replayed scale factor"
+        ));
+    }
+
+    // End-to-end equality on pseudo-random and boundary states.
+    let mut rng = Rng(0x0123_4567_89ab_cdef ^ (width as u64));
+    for round in 0..rounds {
+        let input: Vec<Fr> = (0..width).map(|_| rng.next_field()).collect();
+        let mut reference = input.clone();
+        let mut candidate = input.clone();
+        permute_reference(params, &mut reference)?;
+        permute_scaled(params, optimized, scaled, &mut candidate)?;
+        if reference != candidate {
+            return Err(anyhow!(
+                "width {width}: scaled permutation differs from the reference on sample {round}"
+            ));
+        }
+    }
+    for state in [vec![Fr::zero(); width], vec![Fr::from(1u64); width]] {
+        let mut reference = state.clone();
+        let mut candidate = state;
+        permute_reference(params, &mut reference)?;
+        permute_scaled(params, optimized, scaled, &mut candidate)?;
+        if reference != candidate {
+            return Err(anyhow!(
+                "width {width}: scaled permutation differs from the reference on a boundary state"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Formats one field element as the expression `Fr::new(BigInteger256::new([..]))`.
+pub fn field_element_expr(element: &Fr) -> String {
     let limbs = element.into_bigint().0;
     let rendered: Vec<String> = limbs.iter().map(|limb| limb.to_string()).collect();
-    format!(
-        "    Fr::new(BigInteger256::new([{}])),\n",
-        rendered.join(", ")
-    )
+    format!("Fr::new(BigInteger256::new([{}]))", rendered.join(", "))
+}
+
+/// Formats one field element as a single-line `Fr::new(BigInteger256::new([..]))`.
+pub fn format_field_element(element: &Fr) -> String {
+    format!("    {},\n", field_element_expr(element))
 }

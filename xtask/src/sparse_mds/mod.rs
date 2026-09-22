@@ -4,9 +4,10 @@
 //!
 //! A Poseidon partial round applies the S-box to `state[0]` only, but still
 //! multiplies by the full `width x width` MDS matrix, so each partial round
-//! costs `O(width^2)` field multiplications. The standard optimization from
-//! appendix B of the Poseidon paper rewrites the whole partial-round block into
-//! an equivalent one whose per-round matrix is *sparse*: the identity outside
+//! costs `O(width^2)` field multiplications. The standard optimization, as
+//! implemented by Filecoin's `neptune` and circomlib's `poseidon_opt`, rewrites
+//! the whole partial-round block into an equivalent one whose per-round matrix
+//! is *sparse*: the identity outside
 //! its first row and first column. Applying such a matrix costs `2 * width - 1`
 //! multiplications instead of `width^2`.
 //!
@@ -81,8 +82,8 @@ use anyhow::anyhow;
 use ark_bn254::Fr;
 use ark_ff::{Field, PrimeField, Zero};
 
-pub use matrix::Matrix;
 use matrix::solve;
+pub use matrix::Matrix;
 
 /// The parameters of one width, in the shape the derivation needs.
 pub struct RoundParameters {
@@ -98,9 +99,9 @@ pub struct RoundParameters {
 impl RoundParameters {
     /// Loads the bundled BN254 parameters for width `t`.
     pub fn load(t: u8) -> Result<Self, anyhow::Error> {
-        let params = light_poseidon::parameters::bn254_x5::get_poseidon_parameters::<Fr>(t)
+        let params = light_poseidon::parameters::bn254_x5::get_poseidon_parameters(t)
             .map_err(|e| anyhow!("failed to load parameters for width {t}: {e}"))?;
-        let mds = Matrix::from_rows(&params.mds)?;
+        let mds = Matrix::from_flat(params.mds, params.width)?;
         if mds.order() != params.width {
             return Err(anyhow!(
                 "MDS order {} does not match width {}",
@@ -120,7 +121,7 @@ impl RoundParameters {
             full_rounds: params.full_rounds,
             partial_rounds: params.partial_rounds,
             alpha: params.alpha,
-            ark: params.ark,
+            ark: params.ark.to_vec(),
             mds,
         })
     }
@@ -297,10 +298,7 @@ fn sbox(a: Fr, alpha: u64) -> Fr {
 }
 
 /// The unoptimized permutation, mirroring `light_poseidon`'s round loop.
-pub fn permute_reference(
-    params: &RoundParameters,
-    state: &mut [Fr],
-) -> Result<(), anyhow::Error> {
+pub fn permute_reference(params: &RoundParameters, state: &mut [Fr]) -> Result<(), anyhow::Error> {
     if state.len() != params.width {
         return Err(anyhow!(
             "state of length {} does not match width {}",

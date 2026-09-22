@@ -133,6 +133,9 @@ use ark_ff::{PrimeField, Zero};
 use thiserror::Error;
 
 pub mod parameters;
+pub mod sparse;
+
+pub use sparse::SparseMdsParameters;
 
 pub const HASH_LEN: usize = 32;
 pub const MAX_X5_LEN: usize = 13;
@@ -204,6 +207,13 @@ pub struct PoseidonParameters<F: PrimeField> {
     pub width: usize,
     /// Exponential used in S-box to power elements of the state.
     pub alpha: u64,
+    /// Optional sparse factorization of the partial rounds.
+    ///
+    /// When present, each partial round costs `2 * width - 1` multiplications
+    /// instead of `width * width`, for the same output. Attach it with
+    /// [`with_sparse_mds`](Self::with_sparse_mds); `None` runs the unoptimized
+    /// partial rounds.
+    pub sparse: Option<SparseMdsParameters<F>>,
 }
 
 impl<F: PrimeField> PoseidonParameters<F> {
@@ -236,6 +246,7 @@ impl<F: PrimeField> PoseidonParameters<F> {
             partial_rounds,
             width,
             alpha,
+            sparse: None,
         }
     }
 
@@ -281,7 +292,29 @@ impl<F: PrimeField> PoseidonParameters<F> {
             partial_rounds,
             width,
             alpha,
+            sparse: None,
         })
+    }
+
+    /// Attaches a sparse factorization of the partial rounds, after checking it
+    /// against this parameter set.
+    ///
+    /// Returns [`PoseidonError::InvalidWidthCircom`] if the factorization does
+    /// not match `width` and `partial_rounds`, or if there are fewer than two
+    /// full rounds -- the pre-sparse matrix needs a full round before the
+    /// partial ones to absorb it.
+    pub fn with_sparse_mds(
+        mut self,
+        sparse: SparseMdsParameters<F>,
+    ) -> Result<Self, PoseidonError> {
+        if !sparse.fits(self.width, self.full_rounds, self.partial_rounds) {
+            return Err(PoseidonError::InvalidWidthCircom {
+                width: self.width,
+                max_limit: MAX_X5_LEN,
+            });
+        }
+        self.sparse = Some(sparse);
+        Ok(self)
     }
 }
 
@@ -412,6 +445,11 @@ impl<F: PrimeField> Poseidon<F> {
         Self::with_domain_tag(params, F::zero())
     }
 
+    /// Returns the parameters this hasher was built from.
+    pub fn parameters(&self) -> &PoseidonParameters<F> {
+        &self.params
+    }
+
     fn with_domain_tag(
         params: PoseidonParameters<F>,
         domain_tag: F,
@@ -479,6 +517,60 @@ impl<F: PrimeField> Poseidon<F> {
     ///
     /// `state` must hold exactly `width` elements. All scratch space is on the
     /// stack, so this allocates nothing regardless of width.
+    /// Runs every partial round through the sparse factorization.
+    ///
+    /// Each round adds one folded constant to `state[0]`, applies the S-box to
+    /// it, and mixes with a matrix that is the identity outside its first row
+    /// and column -- `2 * width - 1` multiplications rather than
+    /// `width * width`. The constants the folded rounds no longer add are
+    /// applied once at the end, as `post`.
+    ///
+    /// Mixing is in place: the new first lane is accumulated before the others
+    /// are updated, because both read the old one.
+    ///
+    /// Total for any `state` of length `width`, given a factorization that
+    /// passed [`SparseMdsParameters::fits`]; `permute` checks that up front.
+    #[inline(always)]
+    fn partial_rounds_sparse(
+        state: &mut [F],
+        sparse: &SparseMdsParameters<F>,
+        width: usize,
+        alpha: u64,
+    ) -> Result<(), PoseidonError> {
+        let dimension_error = || PoseidonError::InvalidWidthCircom {
+            width,
+            max_limit: MAX_X5_LEN,
+        };
+        let entries_per_matrix = width.saturating_mul(2).saturating_sub(1);
+
+        for (constant, matrix) in sparse
+            .ark
+            .iter()
+            .zip(sparse.matrices.chunks_exact(entries_per_matrix))
+        {
+            let first = state.first_mut().ok_or_else(dimension_error)?;
+            *first = Self::sbox(*first + *constant, alpha);
+
+            let row = matrix.get(..width).ok_or_else(dimension_error)?;
+            let column = matrix.get(width..).ok_or_else(dimension_error)?;
+
+            let mut mixed = F::zero();
+            for (lane, coefficient) in state.iter().zip(row) {
+                mixed += *lane * *coefficient;
+            }
+            let head = *state.first().ok_or_else(dimension_error)?;
+            for (lane, coefficient) in state.iter_mut().skip(1).zip(column) {
+                *lane += head * *coefficient;
+            }
+            *state.first_mut().ok_or_else(dimension_error)? = mixed;
+        }
+
+        for (lane, constant) in state.iter_mut().zip(sparse.post.iter()) {
+            *lane += *constant;
+        }
+        Ok(())
+    }
+
     fn permute(&self, state: &mut [F]) -> Result<F, PoseidonError> {
         let PoseidonParameters {
             ark,
@@ -487,6 +579,7 @@ impl<F: PrimeField> Poseidon<F> {
             partial_rounds,
             width,
             alpha,
+            sparse,
         } = self.params;
 
         let dimension_error = || PoseidonError::InvalidWidthCircom {
@@ -512,15 +605,40 @@ impl<F: PrimeField> Poseidon<F> {
             return Err(dimension_error());
         }
 
+        // Same reasoning for the factorization: `sparse` is a public field, so
+        // it can be set without going through `with_sparse_mds`. Checking it
+        // here keeps the partial-round path total as well.
+        if let Some(sparse) = sparse {
+            if !sparse.fits(width, full_rounds, partial_rounds) {
+                return Err(dimension_error());
+            }
+        }
+
         let mut scratch = [F::zero(); MAX_X5_LEN];
 
         for (round, constants) in ark.chunks_exact(width).enumerate() {
+            let partial = round >= half_rounds && round < half_rounds + partial_rounds;
+
+            // With a factorization attached, the whole partial block runs once,
+            // at its first round. The remaining partial rounds are skipped
+            // rather than applied: their constant rows are already folded into
+            // `sparse.ark`, and `continue` advances the row iterator in step so
+            // the second half of the full rounds still lines up.
+            if let Some(sparse) = sparse {
+                if partial {
+                    if round == half_rounds {
+                        Self::partial_rounds_sparse(state, &sparse, width, alpha)?;
+                    }
+                    continue;
+                }
+            }
+
             for (lane, constant) in state.iter_mut().zip(constants) {
                 *lane += *constant;
             }
 
             // Full rounds bracket the partial rounds on both sides.
-            if round < half_rounds || round >= half_rounds + partial_rounds {
+            if !partial {
                 for lane in state.iter_mut() {
                     *lane = Self::sbox(*lane, alpha);
                 }
@@ -528,8 +646,16 @@ impl<F: PrimeField> Poseidon<F> {
                 *first = Self::sbox(*first, alpha);
             }
 
+            // The last full round before the partial ones mixes with the
+            // pre-sparse matrix, which carries the linear factor the
+            // factorization pushes out of the partial block.
+            let matrix = match sparse {
+                Some(sparse) if round + 1 == half_rounds => sparse.pre,
+                _ => mds,
+            };
+
             let next = scratch.get_mut(..width).ok_or_else(dimension_error)?;
-            for (out, row) in next.iter_mut().zip(mds.chunks_exact(width)) {
+            for (out, row) in next.iter_mut().zip(matrix.chunks_exact(width)) {
                 *out = state
                     .iter()
                     .zip(row)
@@ -750,9 +876,14 @@ impl<F: PrimeField> Poseidon<F> {
             });
         }
 
-        let params = crate::parameters::bn254_x5::get_poseidon_parameters(
-            (width).try_into().map_err(|_| PoseidonError::U64Tou8)?,
-        )?;
+        let t: u8 = width.try_into().map_err(|_| PoseidonError::U64Tou8)?;
+        let params = crate::parameters::bn254_x5::get_poseidon_parameters(t)?;
+        // Every bundled width has a derived factorization; a width without one
+        // would simply keep the unoptimized partial rounds.
+        let params = match crate::parameters::bn254_x5_sparse::get_sparse_mds_parameters(t) {
+            Some(sparse) => params.with_sparse_mds(sparse)?,
+            None => params,
+        };
         Poseidon::<Fr>::with_domain_tag(params, domain_tag)
     }
 }

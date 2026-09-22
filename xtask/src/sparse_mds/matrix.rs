@@ -30,22 +30,22 @@ impl Matrix {
         Ok(matrix)
     }
 
-    /// Builds a matrix from nested rows, as `PoseidonParameters::mds` stores it.
-    pub fn from_rows(rows: &[Vec<Fr>]) -> Result<Self, anyhow::Error> {
-        let order = rows.len();
-        let mut matrix = Self::zero(order);
-        for (i, row) in rows.iter().enumerate() {
-            if row.len() != order {
-                return Err(anyhow!(
-                    "row {i} has {} entries, expected {order}",
-                    row.len()
-                ));
-            }
-            for (j, value) in row.iter().enumerate() {
-                matrix.set(i, j, *value)?;
-            }
+    /// Builds a matrix from a flat row-major slice, as `PoseidonParameters::mds`
+    /// stores it.
+    pub fn from_flat(entries: &[Fr], order: usize) -> Result<Self, anyhow::Error> {
+        let expected = order
+            .checked_mul(order)
+            .ok_or_else(|| anyhow!("order {order} overflows"))?;
+        if entries.len() != expected {
+            return Err(anyhow!(
+                "flat matrix has {} entries, expected {expected} for order {order}",
+                entries.len()
+            ));
         }
-        Ok(matrix)
+        Ok(Self {
+            order,
+            data: entries.to_vec(),
+        })
     }
 
     pub fn order(&self) -> usize {

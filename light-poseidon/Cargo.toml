@@ -22,3 +22,7 @@ hex = "0.4.3"
 [[bench]]
 name = "bn254_x5"
 harness = false
+
+[[bench]]
+name = "sparse_mds"
+harness = false

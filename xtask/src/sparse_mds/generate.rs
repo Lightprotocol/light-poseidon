@@ -44,9 +44,7 @@ pub fn generate_sparse_mds_parameters(opts: Options) -> Result<(), anyhow::Error
     }
 
     let code = render(&derived)?;
-    let path = opts
-        .path
-        .unwrap_or_else(|| PathBuf::from(OUTPUT_PATH));
+    let path = opts.path.unwrap_or_else(|| PathBuf::from(OUTPUT_PATH));
     let mut file = File::create(&path)?;
     file.write_all(code.as_bytes())?;
     println!("Sparse-MDS parameters written to {path:?}");
@@ -69,7 +67,7 @@ fn render(derived: &[(RoundParameters, Optimized)]) -> Result<String, anyhow::Er
         let pre = optimized.pre.as_slice();
         write!(
             code,
-            "\n/// Pre-sparse matrix for width {width}, flat row-major.\npub static PRE_{width}: [Fr; {}] = [\n",
+            "\n/// Pre-sparse matrix for width {width}, flat row-major.\n#[rustfmt::skip]\npub static PRE_{width}: [Fr; {}] = [\n",
             pre.len()
         )?;
         for element in pre {
@@ -80,7 +78,7 @@ fn render(derived: &[(RoundParameters, Optimized)]) -> Result<String, anyhow::Er
         let entries_per_matrix = 2 * width - 1;
         write!(
             code,
-            "\n/// Sparse partial-round matrices for width {width}, in application\n/// order, {entries_per_matrix} entries each.\npub static SPARSE_{width}: [Fr; {}] = [\n",
+            "\n/// Sparse partial-round matrices for width {width}, in application\n/// order, {entries_per_matrix} entries each.\n#[rustfmt::skip]\npub static SPARSE_{width}: [Fr; {}] = [\n",
             optimized.matrices.len() * entries_per_matrix
         )?;
         for matrix in &optimized.matrices {
@@ -99,7 +97,7 @@ fn render(derived: &[(RoundParameters, Optimized)]) -> Result<String, anyhow::Er
 
         write!(
             code,
-            "\n/// Folded partial-round constants for width {width}, one per round.\npub static PARTIAL_ARK_{width}: [Fr; {}] = [\n",
+            "\n/// Folded partial-round constants for width {width}, one per round.\n#[rustfmt::skip]\npub static PARTIAL_ARK_{width}: [Fr; {}] = [\n",
             optimized.ark.len()
         )?;
         for element in &optimized.ark {
@@ -109,7 +107,7 @@ fn render(derived: &[(RoundParameters, Optimized)]) -> Result<String, anyhow::Er
 
         write!(
             code,
-            "\n/// Constant added to the width-{width} state after the partial rounds.\npub static POST_{width}: [Fr; {}] = [\n",
+            "\n/// Constant added to the width-{width} state after the partial rounds.\n#[rustfmt::skip]\npub static POST_{width}: [Fr; {}] = [\n",
             optimized.post.len()
         )?;
         for element in &optimized.post {
@@ -126,12 +124,12 @@ fn render(derived: &[(RoundParameters, Optimized)]) -> Result<String, anyhow::Er
         let width = params.width;
         write!(
             code,
-            "        {width} => Some(SparseMdsParameters {{\n\
-             \x20           pre: &PRE_{width},\n\
-             \x20           matrices: &SPARSE_{width},\n\
-             \x20           ark: &PARTIAL_ARK_{width},\n\
-             \x20           post: &POST_{width},\n\
-             \x20       }}),\n"
+            "        {width} => Some(SparseMdsParameters::new_unchecked(\n\
+             \x20           &PRE_{width},\n\
+             \x20           &SPARSE_{width},\n\
+             \x20           &PARTIAL_ARK_{width},\n\
+             \x20           &POST_{width},\n\
+             \x20       )),\n"
         )?;
     }
     code += "        _ => None,\n    }\n}\n";
@@ -145,9 +143,10 @@ const HEADER: &str = "\
 //! A partial round applies the S-box to `state[0]` only, yet the reference
 //! round still multiplies by the full MDS matrix, costing `width^2` field
 //! multiplications. The constants here implement the standard factorization
-//! from appendix B of the Poseidon paper, which replaces each partial round's
-//! matrix with one that is the identity outside its first row and column, so a
-//! partial round costs `2 * width - 1` multiplications instead.
+//! implemented by Filecoin's `neptune` and by circomlib's `poseidon_opt`, which
+//! replaces each partial round's matrix with one that is the identity outside
+//! its first row and column, so a partial round costs `2 * width - 1`
+//! multiplications instead.
 //!
 //! The rewrite is an exact identity over the field: the permutation, and every
 //! hash output, are unchanged. `cargo xtask generate-sparse-mds-parameters

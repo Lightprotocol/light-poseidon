@@ -379,8 +379,8 @@ impl<F: PrimeField> Poseidon<F> {
             .map(|(i, _)| {
                 self.state
                     .iter()
-                    .enumerate()
-                    .fold(F::zero(), |acc, (j, a)| acc + *a * self.params.mds[i][j])
+                    .zip(self.params.mds[i].as_slice())
+                    .fold(F::zero(), |acc, (a, m)| acc + *a * *m)
             })
             .collect();
     }

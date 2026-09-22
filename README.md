@@ -35,9 +35,9 @@ of returning the calculated hash in different representations:
 * [`PoseidonBytesHasher`](https://docs.rs/light-poseidon/latest/light_poseidon/trait.PoseidonBytesHasher.html) with the
   `hash_bytes_be` and `hash_bytes_le` methods which returns a byte array.
 * [`PoseidonHasher`](https://docs.rs/light-poseidon/latest/light_poseidon/trait.PoseidonHasher.html) with the `hash` method which returns
-  [`ark_ff::PrimeField`](ark_ff::PrimeField). Might be useful if you want
+  [`ark_ff::PrimeField`](https://docs.rs/ark_ff/latest/ark_ff/fields/prime/trait.PrimeField.html). Might be useful if you want
   to immediately process the result with an another library which works with
-  [`ark_ff::PrimeField`](ark_ff::PrimeField) types.
+  [`ark_ff::PrimeField`](https://docs.rs/ark_ff/latest/ark_ff/fields/prime/trait.PrimeField.html) types.
 
 ## Examples
 
@@ -64,7 +64,7 @@ println!("{:?}", hash);
 ```
 
 With [`PoseidonHasher`](https://docs.rs/light-poseidon/latest/light_poseidon/trait.PoseidonHasher.html) trait and
-[`ark_ff::PrimeField`](ark_ff::PrimeField) result:
+[`ark_ff::PrimeField`](https://docs.rs/ark_ff/latest/ark_ff/fields/prime/trait.PrimeField.html) result:
 
 ```rust
 use light_poseidon::{Poseidon, PoseidonHasher, parameters::bn254_x5};

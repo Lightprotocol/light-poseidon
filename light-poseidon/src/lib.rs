@@ -132,6 +132,7 @@ use ark_bn254::Fr;
 use ark_ff::{PrimeField, Zero};
 use thiserror::Error;
 
+mod bn254;
 pub mod parameters;
 pub mod sparse;
 
@@ -475,8 +476,18 @@ impl<F: PrimeField> Poseidon<F> {
                 x4 * a
             }
             4 => a.square().square(),
-            _ => a.pow([alpha]),
+            _ => Self::sbox_pow(a, alpha),
         }
+    }
+
+    /// The S-box for exponents without a hardcoded chain. Outlined and cold:
+    /// keeping the large `Field::pow` body out of `sbox` leaves `sbox` small
+    /// enough for LLVM to inline the hot chains' field arithmetic into the
+    /// round loops.
+    #[cold]
+    #[inline(never)]
+    fn sbox_pow(a: F, alpha: u64) -> F {
+        a.pow([alpha])
     }
 
     /// Seeds `state` with the domain tag, leaving `state[1..]` for the caller
@@ -521,54 +532,50 @@ impl<F: PrimeField> Poseidon<F> {
     ///
     /// Each round adds one folded constant to `state[0]`, applies the S-box to
     /// it, and mixes with a matrix that is the identity outside its first row
-    /// and column -- `2 * width - 1` multiplications rather than
-    /// `width * width`. The constants the folded rounds no longer add are
-    /// applied once at the end, as `post`.
+    /// and column -- `2 * W - 1` multiplications rather than `W * W`. The
+    /// constants the folded rounds no longer add are applied once at the end,
+    /// as `post`.
     ///
     /// Mixing is in place: the new first lane is accumulated before the others
     /// are updated, because both read the old one.
     ///
-    /// Total for any `state` of length `width`, given a factorization that
-    /// passed [`SparseMdsParameters::fits`]; `permute` checks that up front.
+    /// Total for any `state`, given a factorization that passed
+    /// [`SparseMdsParameters::fits`]; `permute` checks that up front, so a
+    /// short slice cannot occur. The conversions are written with `if let`
+    /// rather than `?` anyway, to keep early exits -- and the error
+    /// construction they drag in -- out of the hot loop.
     #[inline(always)]
-    fn partial_rounds_sparse(
-        state: &mut [F],
+    fn partial_rounds_sparse_w<const W: usize>(
+        state: &mut [F; W],
         sparse: &SparseMdsParameters<F>,
-        width: usize,
         alpha: u64,
-    ) -> Result<(), PoseidonError> {
-        let dimension_error = || PoseidonError::InvalidWidthCircom {
-            width,
-            max_limit: MAX_X5_LEN,
-        };
-        let entries_per_matrix = width.saturating_mul(2).saturating_sub(1);
+    ) {
+        let entries_per_matrix = 2 * W - 1;
 
         for (constant, matrix) in sparse
             .ark
             .iter()
             .zip(sparse.matrices.chunks_exact(entries_per_matrix))
         {
-            let first = state.first_mut().ok_or_else(dimension_error)?;
-            *first = Self::sbox(*first + *constant, alpha);
+            state[0] = Self::sbox(state[0] + *constant, alpha);
 
-            let row = matrix.get(..width).ok_or_else(dimension_error)?;
-            let column = matrix.get(width..).ok_or_else(dimension_error)?;
-
-            let mut mixed = F::zero();
-            for (lane, coefficient) in state.iter().zip(row) {
-                mixed += *lane * *coefficient;
+            if let Some(row) = matrix
+                .get(..W)
+                .and_then(|row| <&[F; W]>::try_from(row).ok())
+            {
+                let column = matrix.get(W..).unwrap_or(&[]);
+                let head = state[0];
+                let mixed = F::sum_of_products(state, row);
+                for (lane, coefficient) in state.iter_mut().skip(1).zip(column) {
+                    *lane += head * *coefficient;
+                }
+                state[0] = mixed;
             }
-            let head = *state.first().ok_or_else(dimension_error)?;
-            for (lane, coefficient) in state.iter_mut().skip(1).zip(column) {
-                *lane += head * *coefficient;
-            }
-            *state.first_mut().ok_or_else(dimension_error)? = mixed;
         }
 
         for (lane, constant) in state.iter_mut().zip(sparse.post.iter()) {
             *lane += *constant;
         }
-        Ok(())
     }
 
     fn permute(&self, state: &mut [F]) -> Result<F, PoseidonError> {
@@ -578,7 +585,7 @@ impl<F: PrimeField> Poseidon<F> {
             full_rounds,
             partial_rounds,
             width,
-            alpha,
+            alpha: _,
             sparse,
         } = self.params;
 
@@ -587,7 +594,6 @@ impl<F: PrimeField> Poseidon<F> {
             max_limit: MAX_X5_LEN,
         };
 
-        let half_rounds = full_rounds / 2;
         let all_rounds = full_rounds.saturating_add(partial_rounds);
 
         // Everything is checked once, here, so the loop body below can be total.
@@ -614,56 +620,163 @@ impl<F: PrimeField> Poseidon<F> {
             }
         }
 
-        let mut scratch = [F::zero(); MAX_X5_LEN];
-
-        for (round, constants) in ark.chunks_exact(width).enumerate() {
-            let partial = round >= half_rounds && round < half_rounds + partial_rounds;
-
-            // With a factorization attached, the whole partial block runs once,
-            // at its first round. The remaining partial rounds are skipped
-            // rather than applied: their constant rows are already folded into
-            // `sparse.ark`, and `continue` advances the row iterator in step so
-            // the second half of the full rounds still lines up.
-            if let Some(sparse) = sparse {
-                if partial {
-                    if round == half_rounds {
-                        Self::partial_rounds_sparse(state, &sparse, width, alpha)?;
-                    }
-                    continue;
-                }
-            }
-
-            for (lane, constant) in state.iter_mut().zip(constants) {
-                *lane += *constant;
-            }
-
-            // Full rounds bracket the partial rounds on both sides.
-            if !partial {
-                for lane in state.iter_mut() {
-                    *lane = Self::sbox(*lane, alpha);
-                }
-            } else if let Some(first) = state.first_mut() {
-                *first = Self::sbox(*first, alpha);
-            }
-
-            // The last full round before the partial ones mixes with the
-            // pre-sparse matrix, which carries the linear factor the
-            // factorization pushes out of the partial block.
-            let matrix = match sparse {
-                Some(sparse) if round + 1 == half_rounds => sparse.pre,
-                _ => mds,
-            };
-
-            let next = scratch.get_mut(..width).ok_or_else(dimension_error)?;
-            for (out, row) in next.iter_mut().zip(matrix.chunks_exact(width)) {
-                *out = state
-                    .iter()
-                    .zip(row)
-                    .fold(F::zero(), |acc, (lane, m)| acc + *lane * *m);
-            }
-            state.copy_from_slice(next);
+        // BN254 gets a concretely-compiled permutation; see the `bn254`
+        // module docs for why the generic path below cannot reach the same
+        // speed. The check is a constant-folded type comparison.
+        if let Some((params, state)) = bn254::downcast(&self.params, state) {
+            return bn254::permute(params, state).map(bn254::upcast);
         }
 
+        // Dispatch to a permutation monomorphized for the width, so the round
+        // loops have constant trip counts and the state is a fixed-size array
+        // LLVM can keep in registers. The constructor rejects widths outside
+        // `2..=MAX_X5_LEN`, so the fallback is unreachable for any hasher that
+        // was built through one.
+        macro_rules! dispatch {
+            ($($w:literal),+ $(,)?) => {
+                match width {
+                    $($w => self.permute_w::<$w>(state),)+
+                    _ => Err(dimension_error()),
+                }
+            };
+        }
+        dispatch!(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
+    }
+
+    /// One full round: add the round constants, apply the S-box to every lane,
+    /// multiply by the MDS matrix.
+    ///
+    /// Fixed-size rows let the matrix application go through
+    /// [`Field::sum_of_products`](ark_ff::Field::sum_of_products), which
+    /// performs one Montgomery reduction per dot product instead of one per
+    /// multiplication.
+    #[inline(always)]
+    fn full_round_w<const W: usize>(
+        state: &mut [F; W],
+        constants: &[F; W],
+        matrix: &[[F; W]; W],
+        alpha: u64,
+    ) {
+        for (lane, constant) in state.iter_mut().zip(constants) {
+            *lane += *constant;
+        }
+        for lane in state.iter_mut() {
+            *lane = Self::sbox(*lane, alpha);
+        }
+        let mut next = [F::zero(); W];
+        for (out, row) in next.iter_mut().zip(matrix.iter()) {
+            *out = F::sum_of_products(state, row);
+        }
+        *state = next;
+    }
+
+    /// The permutation core, monomorphized on the state width.
+    ///
+    /// Called only from [`permute`](Self::permute), which has already checked
+    /// that `state` is exactly `W` elements and that the round constants, MDS
+    /// matrix and sparse factorization match the declared round structure, so
+    /// the slicing below is total: `as_chunks` is given exact inputs and every
+    /// fallible conversion is length-checked first.
+    ///
+    /// The round structure runs as three sequential phases -- first half of
+    /// the full rounds, the partial block, second half of the full rounds --
+    /// rather than one loop with per-round branching, so LLVM sees the shape
+    /// of each phase directly.
+    ///
+    /// Deliberately *not* inlined into [`permute`](Self::permute): with twelve
+    /// widths inlined there, the dispatcher becomes one enormous function and
+    /// the individual permutation bodies optimize measurably worse.
+    #[inline(never)]
+    fn permute_w<const W: usize>(&self, state: &mut [F]) -> Result<F, PoseidonError> {
+        let PoseidonParameters {
+            ark,
+            mds,
+            full_rounds,
+            partial_rounds,
+            width,
+            alpha,
+            sparse,
+        } = self.params;
+
+        let dimension_error = || PoseidonError::InvalidWidthCircom {
+            width,
+            max_limit: MAX_X5_LEN,
+        };
+
+        let state: &mut [F; W] = <&mut [F; W]>::try_from(state).map_err(|_| dimension_error())?;
+
+        let half_rounds = full_rounds / 2;
+
+        let ark_rounds = ark.as_chunks::<W>().0;
+        let mds_rows: &[[F; W]; W] = <&[[F; W]; W]>::try_from(mds.as_chunks::<W>().0)
+            .map_err(|_| dimension_error())?;
+        let pre_rows = match sparse {
+            Some(sparse) => Some(
+                <&[[F; W]; W]>::try_from(sparse.pre.as_chunks::<W>().0)
+                    .map_err(|_| dimension_error())?,
+            ),
+            None => None,
+        };
+
+        // First half of the full rounds. The last of them mixes with the
+        // pre-sparse matrix when a factorization is attached; it carries the
+        // linear factor the factorization pushes out of the partial block.
+        let first_half = ark_rounds.get(..half_rounds).ok_or_else(dimension_error)?;
+        for (round, constants) in first_half.iter().enumerate() {
+            let matrix = match pre_rows {
+                Some(pre_rows) if round + 1 == half_rounds => pre_rows,
+                _ => mds_rows,
+            };
+            Self::full_round_w(state, constants, matrix, alpha);
+        }
+
+        // The partial block. With a factorization attached it runs through the
+        // sparse form; without one, each round applies the S-box to lane zero
+        // alone but still multiplies by the full MDS matrix.
+        match sparse {
+            Some(sparse) => Self::partial_rounds_sparse_w(state, &sparse, alpha),
+            None => {
+                let partial_ark = ark_rounds
+                    .get(half_rounds..half_rounds.saturating_add(partial_rounds))
+                    .ok_or_else(dimension_error)?;
+                for constants in partial_ark {
+                    for (lane, constant) in state.iter_mut().zip(constants) {
+                        *lane += *constant;
+                    }
+                    if let Some(first) = state.first_mut() {
+                        *first = Self::sbox(*first, alpha);
+                    }
+                    let mut next = [F::zero(); W];
+                    for (out, row) in next.iter_mut().zip(mds_rows.iter()) {
+                        *out = F::sum_of_products(state, row);
+                    }
+                    *state = next;
+                }
+            }
+        }
+
+        // Second half of the full rounds. Only lane zero of the final round is
+        // read, so its MDS application collapses to a single dot product.
+        let second_half = ark_rounds
+            .get(half_rounds.saturating_add(partial_rounds)..)
+            .ok_or_else(dimension_error)?;
+        if let Some((last_constants, earlier)) = second_half.split_last() {
+            for constants in earlier {
+                Self::full_round_w(state, constants, mds_rows, alpha);
+            }
+            for (lane, constant) in state.iter_mut().zip(last_constants) {
+                *lane += *constant;
+            }
+            for lane in state.iter_mut() {
+                *lane = Self::sbox(*lane, alpha);
+            }
+            let row = mds_rows.first().ok_or_else(dimension_error)?;
+            return Ok(F::sum_of_products(state, row));
+        }
+
+        // Reaching here means the parameters declared no second-half full
+        // rounds; the up-front `ark` length check passes for such parameters
+        // (all rounds partial), and the output is lane zero as it was before.
         state.first().copied().ok_or_else(dimension_error)
     }
 }

@@ -64,7 +64,7 @@ fn generic_constructor_rejects_out_of_range_widths() {
         assert!(
             matches!(
                 Poseidon::new(params),
-                Err(PoseidonError::InvalidWidth { .. })
+                Err(PoseidonError::InvalidWidthCircom { .. })
             ),
             "width {width} should be rejected"
         );
@@ -79,7 +79,7 @@ fn generic_constructor_rejects_out_of_range_widths() {
         let params = structural_params(width, 2, 1);
         let result = Poseidon::new(params);
         assert!(
-            matches!(result, Err(PoseidonError::InvalidWidth { .. })),
+            matches!(result, Err(PoseidonError::InvalidWidthCircom { .. })),
             "width {width} should be rejected, got {result:?}"
         );
     }
@@ -100,13 +100,13 @@ fn parameter_validation_rejects_inconsistent_dimensions() {
         Box::leak(vec![Fr::zero(); width * width - 1].into_boxed_slice());
     assert!(matches!(
         PoseidonParameters::new(good.ark, short_mds, full, partial, width, 5),
-        Err(PoseidonError::InvalidParameterDimensions { .. })
+        Err(PoseidonError::InvalidWidthCircom { .. })
     ));
 
     // An empty MDS likewise.
     assert!(matches!(
         PoseidonParameters::new(good.ark, &[], full, partial, width, 5),
-        Err(PoseidonError::InvalidParameterDimensions { .. })
+        Err(PoseidonError::InvalidWidthCircom { .. })
     ));
 
     // Too few round constants.
@@ -114,7 +114,7 @@ fn parameter_validation_rejects_inconsistent_dimensions() {
         Box::leak(vec![Fr::zero(); width * (full + partial) - 1].into_boxed_slice());
     assert!(matches!(
         PoseidonParameters::new(short_ark, good.mds, full, partial, width, 5),
-        Err(PoseidonError::InvalidParameterDimensions { .. })
+        Err(PoseidonError::InvalidWidthCircom { .. })
     ));
 }
 
@@ -130,10 +130,7 @@ fn hashing_with_a_truncated_mds_errors_instead_of_panicking() {
     let mut hasher = Poseidon::new(params).expect("width is in range");
     let result = hasher.hash(&[Fr::zero(), Fr::zero()]);
     assert!(
-        matches!(
-            result,
-            Err(PoseidonError::InvalidParameterDimensions { .. })
-        ),
+        matches!(result, Err(PoseidonError::InvalidWidthCircom { .. })),
         "expected a dimension error, got {result:?}"
     );
 }

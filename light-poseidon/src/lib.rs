@@ -162,20 +162,19 @@ pub enum PoseidonError {
     U64Tou8,
     #[error("Failed to convert bytes to BigInt")]
     BytesToBigInt,
-    #[error("Invalid width: {width}. Choose a width between 2 and 16 for 1 to 15 inputs.")]
-    InvalidWidthCircom { width: usize, max_limit: usize },
+    /// Returned when a width is outside the supported range, and when a
+    /// parameter set's round constants or MDS matrix do not match the width it
+    /// declares.
+    ///
+    /// Downstream crates, `solana-poseidon` among them, match this enum
+    /// exhaustively, so new variants break their compilation even when every
+    /// function signature is unchanged. Both failure modes therefore reuse this
+    /// variant rather than introducing new ones.
     #[error(
-        "Inconsistent parameter dimensions: expected {expected_ark} round constants and \
-         {expected_mds} MDS entries, got {actual_ark} and {actual_mds}."
+        "Invalid width: {width}. Choose a width between 2 and {max_limit}, with \
+         round constants and an MDS matrix matching that width."
     )]
-    InvalidParameterDimensions {
-        expected_ark: usize,
-        actual_ark: usize,
-        expected_mds: usize,
-        actual_mds: usize,
-    },
-    #[error("Invalid width: {width}. Must be between 2 and {max_limit}.")]
-    InvalidWidth { width: usize, max_limit: usize },
+    InvalidWidthCircom { width: usize, max_limit: usize },
 }
 
 /// Parameters for the Poseidon hash algorithm.
@@ -218,9 +217,9 @@ impl<F: PrimeField> PoseidonParameters<F> {
     /// The caller guarantees that `mds` holds exactly `width * width` elements
     /// and `ark` exactly `width * (full_rounds + partial_rounds)`. Passing
     /// shorter slices does not invoke undefined behaviour -- hashing returns
-    /// [`PoseidonError::InvalidParameterDimensions`] rather than computing with
-    /// missing terms -- but the error surfaces at hash time instead of here.
-    /// Prefer [`PoseidonParameters::new`] for parameters from any other source.
+    /// [`PoseidonError::InvalidWidthCircom`] rather than computing with missing
+    /// terms -- but the error surfaces at hash time instead of here. Prefer
+    /// [`PoseidonParameters::new`] for parameters from any other source.
     pub fn new_unchecked(
         ark: &'static [F],
         mds: &'static [F],
@@ -241,8 +240,8 @@ impl<F: PrimeField> PoseidonParameters<F> {
 
     /// Builds a parameter set, validating that the dimensions are consistent.
     ///
-    /// Returns [`PoseidonError::InvalidParameterDimensions`] unless `mds` holds
-    /// exactly `width * width` elements and `ark` exactly
+    /// Returns [`PoseidonError::InvalidWidthCircom`] unless `mds` holds exactly
+    /// `width * width` elements and `ark` exactly
     /// `width * (full_rounds + partial_rounds)`. Without this check a truncated
     /// matrix would silently hash with missing terms rather than being rejected.
     pub fn new(
@@ -253,32 +252,25 @@ impl<F: PrimeField> PoseidonParameters<F> {
         width: usize,
         alpha: u64,
     ) -> Result<Self, PoseidonError> {
-        let expected_mds =
-            width
-                .checked_mul(width)
-                .ok_or(PoseidonError::InvalidParameterDimensions {
-                    expected_ark: 0,
-                    actual_ark: ark.len(),
-                    expected_mds: 0,
-                    actual_mds: mds.len(),
-                })?;
-        let expected_ark = full_rounds
+        let dimension_error = PoseidonError::InvalidWidthCircom {
+            width,
+            max_limit: MAX_X5_LEN,
+        };
+
+        let expected_mds = match width.checked_mul(width) {
+            Some(expected) => expected,
+            None => return Err(dimension_error),
+        };
+        let expected_ark = match full_rounds
             .checked_add(partial_rounds)
             .and_then(|rounds| rounds.checked_mul(width))
-            .ok_or(PoseidonError::InvalidParameterDimensions {
-                expected_ark: 0,
-                actual_ark: ark.len(),
-                expected_mds,
-                actual_mds: mds.len(),
-            })?;
+        {
+            Some(expected) => expected,
+            None => return Err(dimension_error),
+        };
 
         if mds.len() != expected_mds || ark.len() != expected_ark {
-            return Err(PoseidonError::InvalidParameterDimensions {
-                expected_ark,
-                actual_ark: ark.len(),
-                expected_mds,
-                actual_mds: mds.len(),
-            });
+            return Err(dimension_error);
         }
 
         Ok(Self {
@@ -424,7 +416,7 @@ impl<F: PrimeField> Poseidon<F> {
         domain_tag: F,
     ) -> Result<Self, PoseidonError> {
         if params.width < 2 || params.width > MAX_X5_LEN {
-            return Err(PoseidonError::InvalidWidth {
+            return Err(PoseidonError::InvalidWidthCircom {
                 width: params.width,
                 max_limit: MAX_X5_LEN,
             });
@@ -455,10 +447,12 @@ impl<F: PrimeField> Poseidon<F> {
     #[inline(always)]
     fn init_state<'a>(&self, state: &'a mut [F; MAX_X5_LEN]) -> Result<&'a mut [F], PoseidonError> {
         let width = self.params.width;
-        let live = state.get_mut(..width).ok_or(PoseidonError::InvalidWidth {
-            width,
-            max_limit: MAX_X5_LEN,
-        })?;
+        let live = state
+            .get_mut(..width)
+            .ok_or(PoseidonError::InvalidWidthCircom {
+                width,
+                max_limit: MAX_X5_LEN,
+            })?;
         if let Some(first) = live.first_mut() {
             *first = self.domain_tag;
         }
@@ -496,11 +490,9 @@ impl<F: PrimeField> Poseidon<F> {
 
         // The constructor and `PoseidonParameters` validation make these
         // unreachable; they exist so no path can panic on malformed input.
-        let dimension_error = || PoseidonError::InvalidParameterDimensions {
-            expected_ark: width.saturating_mul(full_rounds.saturating_add(partial_rounds)),
-            actual_ark: ark.len(),
-            expected_mds: width.saturating_mul(width),
-            actual_mds: mds.len(),
+        let dimension_error = || PoseidonError::InvalidWidthCircom {
+            width,
+            max_limit: MAX_X5_LEN,
         };
 
         if state.len() != width {

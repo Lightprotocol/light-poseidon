@@ -55,12 +55,8 @@ fn count_allocations<F: FnOnce()>(f: F) -> usize {
 fn hashing_allocates_nothing() {
     // Everything the measurement needs is built up front, so only the hashing
     // itself is counted.
-    let field_inputs: Vec<Vec<Fr>> = (1..MAX_X5_LEN)
-        .map(|n| vec![Fr::zero(); n])
-        .collect();
-    let byte_storage: Vec<Vec<[u8; 32]>> = (1..MAX_X5_LEN)
-        .map(|n| vec![[1u8; 32]; n])
-        .collect();
+    let field_inputs: Vec<Vec<Fr>> = (1..MAX_X5_LEN).map(|n| vec![Fr::zero(); n]).collect();
+    let byte_storage: Vec<Vec<[u8; 32]>> = (1..MAX_X5_LEN).map(|n| vec![[1u8; 32]; n]).collect();
     let byte_inputs: Vec<Vec<&[u8]>> = byte_storage
         .iter()
         .map(|inputs| inputs.iter().map(|b| b.as_slice()).collect())
@@ -114,7 +110,8 @@ fn hashing_allocates_nothing() {
             }
         });
         assert_eq!(
-            allocations, 0,
+            allocations,
+            0,
             "repeated hashing at width {} allocated {allocations} times",
             nr_inputs + 1
         );

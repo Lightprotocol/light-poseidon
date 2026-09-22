@@ -253,14 +253,15 @@ impl<F: PrimeField> PoseidonParameters<F> {
         width: usize,
         alpha: u64,
     ) -> Result<Self, PoseidonError> {
-        let expected_mds = width
-            .checked_mul(width)
-            .ok_or(PoseidonError::InvalidParameterDimensions {
-                expected_ark: 0,
-                actual_ark: ark.len(),
-                expected_mds: 0,
-                actual_mds: mds.len(),
-            })?;
+        let expected_mds =
+            width
+                .checked_mul(width)
+                .ok_or(PoseidonError::InvalidParameterDimensions {
+                    expected_ark: 0,
+                    actual_ark: ark.len(),
+                    expected_mds: 0,
+                    actual_mds: mds.len(),
+                })?;
         let expected_ark = full_rounds
             .checked_add(partial_rounds)
             .and_then(|rounds| rounds.checked_mul(width))
@@ -454,12 +455,10 @@ impl<F: PrimeField> Poseidon<F> {
     #[inline(always)]
     fn init_state<'a>(&self, state: &'a mut [F; MAX_X5_LEN]) -> Result<&'a mut [F], PoseidonError> {
         let width = self.params.width;
-        let live = state
-            .get_mut(..width)
-            .ok_or(PoseidonError::InvalidWidth {
-                width,
-                max_limit: MAX_X5_LEN,
-            })?;
+        let live = state.get_mut(..width).ok_or(PoseidonError::InvalidWidth {
+            width,
+            max_limit: MAX_X5_LEN,
+        })?;
         if let Some(first) = live.first_mut() {
             *first = self.domain_tag;
         }
@@ -681,7 +680,10 @@ macro_rules! impl_bytes_to_prime_field_element {
             // Zero padding at the most significant end is accepted, matching the
             // previous `BigUint`-based behaviour.
             let trimmed = if $is_be {
-                let start = input.iter().position(|byte| *byte != 0).unwrap_or(input.len());
+                let start = input
+                    .iter()
+                    .position(|byte| *byte != 0)
+                    .unwrap_or(input.len());
                 input.get(start..).ok_or(PoseidonError::BytesToBigInt)?
             } else {
                 let end = input

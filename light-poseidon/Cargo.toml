@@ -12,7 +12,6 @@ edition = "2021"
 [dependencies]
 ark-bn254 = "0.5.0"
 ark-ff = "0.5.0"
-num-bigint = "0.4.4"
 thiserror = "1.0"
 
 [dev-dependencies]

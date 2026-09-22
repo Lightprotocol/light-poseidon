@@ -16,7 +16,8 @@ use light_poseidon::{
 /// The values are an identity MDS and zero round constants: enough to exercise
 /// dimensions and capacity, and explicitly not a secure parameter set.
 fn structural_params(width: usize, full: usize, partial: usize) -> PoseidonParameters<Fr> {
-    let ark: &'static [Fr] = Box::leak(vec![Fr::zero(); width * (full + partial)].into_boxed_slice());
+    let ark: &'static [Fr] =
+        Box::leak(vec![Fr::zero(); width * (full + partial)].into_boxed_slice());
     let mut mds = vec![Fr::zero(); width * width];
     for (i, row) in mds.chunks_exact_mut(width).enumerate() {
         if let Some(cell) = row.get_mut(i) {
@@ -95,7 +96,8 @@ fn parameter_validation_rejects_inconsistent_dimensions() {
 
     // A truncated MDS is rejected rather than silently hashing with missing
     // terms.
-    let short_mds: &'static [Fr] = Box::leak(vec![Fr::zero(); width * width - 1].into_boxed_slice());
+    let short_mds: &'static [Fr] =
+        Box::leak(vec![Fr::zero(); width * width - 1].into_boxed_slice());
     assert!(matches!(
         PoseidonParameters::new(good.ark, short_mds, full, partial, width, 5),
         Err(PoseidonError::InvalidParameterDimensions { .. })

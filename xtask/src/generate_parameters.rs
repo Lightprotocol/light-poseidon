@@ -251,8 +251,9 @@ fn get_fr_string(string: &str) -> String {
     bytes.reverse();
 
     let mut limbs = [0u64; 4];
-    for (limb, chunk) in limbs.iter_mut().zip(bytes.chunks_exact(8)) {
-        *limb = u64::from_le_bytes(chunk.try_into().unwrap());
+    let (chunks, _rest) = bytes.as_chunks::<8>();
+    for (limb, chunk) in limbs.iter_mut().zip(chunks) {
+        *limb = u64::from_le_bytes(*chunk);
     }
     let [a, b, c, d] = limbs;
 

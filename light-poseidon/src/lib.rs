@@ -561,8 +561,9 @@ fn bigint_to_hash_bytes_be<F: PrimeField>(
         return Err(PoseidonError::VecToArray);
     }
     let mut out = [0u8; HASH_LEN];
-    for (chunk, limb) in out.chunks_exact_mut(8).zip(limbs.iter().rev()) {
-        chunk.copy_from_slice(&limb.to_be_bytes());
+    let (chunks, _rest) = out.as_chunks_mut::<8>();
+    for (chunk, limb) in chunks.iter_mut().zip(limbs.iter().rev()) {
+        *chunk = limb.to_be_bytes();
     }
     Ok(out)
 }
@@ -577,8 +578,9 @@ fn bigint_to_hash_bytes_le<F: PrimeField>(
         return Err(PoseidonError::VecToArray);
     }
     let mut out = [0u8; HASH_LEN];
-    for (chunk, limb) in out.chunks_exact_mut(8).zip(limbs.iter()) {
-        chunk.copy_from_slice(&limb.to_le_bytes());
+    let (chunks, _rest) = out.as_chunks_mut::<8>();
+    for (chunk, limb) in chunks.iter_mut().zip(limbs.iter()) {
+        *chunk = limb.to_le_bytes();
     }
     Ok(out)
 }

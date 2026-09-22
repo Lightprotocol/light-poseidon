@@ -120,115 +120,112 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
     //! ```bash
     //! sage generate_parameters_grain.sage 1 0 254 3 8 57 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
     //! ```
+    /// Number of full rounds, identical for every supported width.
     pub const FULL_ROUNDS: usize = 8;
-    pub const PARTIAL_ROUNDS: [usize; 15] = [56, 57, 56, 60, 60, 63, 64, 63, 60, 66, 60, 65, 70, 60, 64];
+    /// S-box exponent.
     pub const ALPHA: u64 = 5;
 
-    /// Returns Poseidon parameters for the BN254 curve with the following
-    /// properties:
-    ///
-    /// * x^5 S-boxes
-    /// * 3 inputs (one input with zeros and two inputs from the syscall)
-    /// * 8 full rounds and 57 partial rounds
-    ///
-    /// The argument of this macro is a type which implements
-    /// [`ark_ff::PrimeField`](ark_ff::PrimeField).
-    use ark_ff::PrimeField;
-    use crate::{PoseidonParameters, PoseidonError};
-    // to avoid warnings when width_limit_13 feature is used
-    #[allow(unused_variables)]
-    pub fn get_poseidon_parameters<F: PrimeField + std::convert::From<ark_ff::BigInteger256>>(t: u8) -> Result<PoseidonParameters<F>, PoseidonError> {
-    if t == 0_u8 {
-        Err(PoseidonError::InvalidWidthCircom {
-            width: t as usize,
-            max_limit: 13usize,
-        })\n
-    }\n";
+    use ark_bn254::Fr;
+    use ark_ff::BigInteger256;
+    use crate::{PoseidonError, PoseidonParameters};
+
+";
     for t in 2..14 {
         let path = format!("./target/params/poseidon_params_bn254_x5_{}", t);
         let mut file = File::open(path)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
-        let lines = contents.lines();
 
-        for line in lines {
+        // Round constants, in round-major order, and the MDS matrix flattened
+        // row-major. Both are emitted as `static` arrays so that the Montgomery
+        // conversion happens at compile time via the const fn `Fr::new`.
+        let mut ark: Vec<String> = Vec::new();
+        let mut mds: Vec<String> = Vec::new();
+
+        for line in contents.lines() {
             if line.starts_with("['") {
-                code += &[
-                    String::from("\telse if "),
-                    t.to_string(),
-                    String::from(
-                        " == t {
-                        let ark = vec![\n",
-                    ),
-                ]
-                .concat();
-
-                let line_processed = line
+                let stripped = line
                     .strip_prefix('[')
-                    .unwrap()
-                    .strip_suffix(']')
-                    .unwrap()
-                    .trim()
-                    .split(", ")
-                    .collect::<Vec<&str>>();
-                let _x: Vec<&str> = line_processed
-                    .iter()
-                    .map(|elem| {
-                        let str = String::from(
-                            elem.strip_prefix('\'').unwrap().strip_suffix('\'').unwrap(),
-                        );
-                        code += &get_fr_string(&str);
-
-                        return "1";
-                    })
-                    .collect();
-                code += "\t\t\t\t];\n";
+                    .and_then(|l| l.strip_suffix(']'))
+                    .ok_or_else(|| anyhow::format_err!("malformed ark line for t={}", t))?;
+                for elem in stripped.trim().split(", ") {
+                    let value = elem
+                        .strip_prefix('\'')
+                        .and_then(|e| e.strip_suffix('\''))
+                        .ok_or_else(|| anyhow::format_err!("malformed ark entry for t={}", t))?;
+                    ark.push(get_fr_string(value));
+                }
             } else if line.starts_with(" [['") {
-                code += &String::from("\t\t\t\tlet mds = vec![\n");
-                let line_processed = line.split('[').collect::<Vec<&str>>();
-
-                let _x: Vec<&str> = line_processed
-                    .iter()
-                    .map(|e| {
-                        if e.starts_with('\'') {
-                            code += &String::from("\t\t\t\t\tvec![\n");
-                        }
-
-                        for elem in e.split('\'') {
-                            if elem.starts_with("0x") {
-                                code += &get_fr_string(&String::from(elem));
-                            }
-                        }
-                        if e.starts_with('\'') {
-                            code += &String::from("\t\t\t\t\t],\n");
-                        }
-
-                        return "1";
-                    })
-                    .collect();
-                code += &String::from("\t\t];\n");
+                for elem in line.split('\'') {
+                    if elem.starts_with("0x") {
+                        mds.push(get_fr_string(elem));
+                    }
+                }
             }
         }
-        code += &format!(
-            "Ok(crate::PoseidonParameters::new(
-            ark,
-            mds,
-            FULL_ROUNDS,
-            PARTIAL_ROUNDS[{}],
-            t.into(),
-            ALPHA,
-            ))\n",
-            t - 2
-        );
 
-        code += "\t}\n";
+        let expected_mds = t * t;
+        if mds.len() != expected_mds {
+            return Err(anyhow::format_err!(
+                "t={}: expected {} MDS entries, parsed {}",
+                t,
+                expected_mds,
+                mds.len()
+            ));
+        }
+        let expected_ark = t * (8 + PARTIAL_ROUNDS[t - 2] as usize);
+        if ark.len() != expected_ark {
+            return Err(anyhow::format_err!(
+                "t={}: expected {} round constants, parsed {}",
+                t,
+                expected_ark,
+                ark.len()
+            ));
+        }
+
+        code += &format!(
+            "/// Round constants for width {}: {} rounds x {} lanes.\n",
+            t,
+            8 + PARTIAL_ROUNDS[t - 2] as usize,
+            t
+        );
+        code += &format!("pub static ARK_{}: [Fr; {}] = [\n", t, ark.len());
+        for entry in &ark {
+            code += entry;
+        }
+        code += "];\n\n";
+
+        code += &format!("/// MDS matrix for width {}, flattened row-major.\n", t);
+        code += &format!("pub static MDS_{}: [Fr; {}] = [\n", t, mds.len());
+        for entry in &mds {
+            code += entry;
+        }
+        code += "];\n\n";
     }
-    code += "else {
-        Err(PoseidonError::InvalidWidthCircom {
-            width: t as usize,
-            max_limit: 13usize,
-        })\n
-    }";
+
+    code += "/// Returns the Circom-compatible BN254 x^5 parameters for state width `t`.\n";
+    code += "///\n";
+    code += "/// The returned parameters borrow `'static` data, so this performs no\n";
+    code += "/// allocation and no field conversion. Dimensions are fixed when this\n";
+    code += "/// file is generated, so they are not re-checked on every call.\n";
+    code +=
+        "pub fn get_poseidon_parameters(t: u8) -> Result<PoseidonParameters<Fr>, PoseidonError> {\n";
+    code += "    match t {\n";
+    for t in 2..14 {
+        code += &format!(
+            "        {} => Ok(PoseidonParameters::new_unchecked(\n            &ARK_{},\n            &MDS_{},\n            FULL_ROUNDS,\n            {},\n            {},\n            ALPHA,\n        )),\n",
+            t,
+            t,
+            t,
+            PARTIAL_ROUNDS[t - 2],
+            t
+        );
+    }
+    code += "        _ => Err(PoseidonError::InvalidWidthCircom {\n";
+    code += "            width: t as usize,\n";
+    code += "            max_limit: 13usize,\n";
+    code += "        }),\n";
+    code += "    }\n";
     code += "}\n";
 
     let path = "./light-poseidon/src/parameters/bn254_x5.rs";
@@ -244,17 +241,20 @@ pub fn generate_parameters(_opts: Options) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Emits one field element as a `const`-evaluable `Fr`.
+///
+/// `Fp::new` is a const fn that performs the Montgomery reduction at compile
+/// time, unlike `From<BigInt>`, which calls `from_bigint` at runtime. Emitting
+/// `Fr::new` therefore moves the whole conversion out of the hot path.
 fn get_fr_string(string: &str) -> String {
     let mut bytes = hex::decode(string.split_at(2).1).unwrap();
-    let mut tmp_str = String::from("F::from(ark_ff::BigInteger256::new([\n");
     bytes.reverse();
-    for i in 0..4 {
-        tmp_str += &format!(
-            "\t{},\n",
-            u64::from_le_bytes(bytes[i * 8..(i + 1) * 8].try_into().unwrap())
-        );
-    }
 
-    tmp_str += "])),\n";
-    tmp_str
+    let mut limbs = [0u64; 4];
+    for (limb, chunk) in limbs.iter_mut().zip(bytes.chunks_exact(8)) {
+        *limb = u64::from_le_bytes(chunk.try_into().unwrap());
+    }
+    let [a, b, c, d] = limbs;
+
+    format!("    Fr::new(BigInteger256::new([{a}, {b}, {c}, {d}])),\n")
 }

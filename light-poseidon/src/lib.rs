@@ -129,7 +129,7 @@
 //! This library has been audited by [Veridise](https://veridise.com/). You can
 //! read the audit report [here](https://github.com/Lightprotocol/light-poseidon/blob/main/assets/audit.pdf).
 use ark_bn254::Fr;
-use ark_ff::{BigInteger, PrimeField, Zero};
+use ark_ff::{PrimeField, Zero};
 use thiserror::Error;
 
 pub mod parameters;
@@ -164,14 +164,36 @@ pub enum PoseidonError {
     BytesToBigInt,
     #[error("Invalid width: {width}. Choose a width between 2 and 16 for 1 to 15 inputs.")]
     InvalidWidthCircom { width: usize, max_limit: usize },
+    #[error(
+        "Inconsistent parameter dimensions: expected {expected_ark} round constants and \
+         {expected_mds} MDS entries, got {actual_ark} and {actual_mds}."
+    )]
+    InvalidParameterDimensions {
+        expected_ark: usize,
+        actual_ark: usize,
+        expected_mds: usize,
+        actual_mds: usize,
+    },
+    #[error("Invalid width: {width}. Must be between 2 and {max_limit}.")]
+    InvalidWidth { width: usize, max_limit: usize },
 }
 
 /// Parameters for the Poseidon hash algorithm.
+///
+/// Both `ark` and `mds` borrow `'static` data, so constructing a hasher performs
+/// no allocation and no field conversion. The bundled parameter sets in
+/// [`parameters`] are `static` arrays built at compile time.
+///
+/// Callers supplying their own parameters need `'static` data as well; a set
+/// computed at run time can be promoted with [`Box::leak`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PoseidonParameters<F: PrimeField> {
-    /// Round constants.
-    pub ark: Vec<F>,
-    /// MDS matrix.
-    pub mds: Vec<Vec<F>>,
+    /// Round constants, in round-major order: `width` constants per round, for
+    /// `full_rounds + partial_rounds` rounds.
+    pub ark: &'static [F],
+    /// MDS matrix, flattened row-major: `width * width` elements, where the
+    /// entry at row `i` column `j` lives at index `i * width + j`.
+    pub mds: &'static [F],
     /// Number of full rounds (where S-box is applied to all elements of the
     /// state).
     pub full_rounds: usize,
@@ -185,9 +207,23 @@ pub struct PoseidonParameters<F: PrimeField> {
 }
 
 impl<F: PrimeField> PoseidonParameters<F> {
-    pub fn new(
-        ark: Vec<F>,
-        mds: Vec<Vec<F>>,
+    /// Builds a parameter set without checking that the dimensions agree.
+    ///
+    /// This is what the bundled Circom parameter sets use: their dimensions are
+    /// fixed when [`parameters`] is generated, so re-checking them on every
+    /// hasher construction would be wasted work on the syscall hot path.
+    ///
+    /// # Correctness
+    ///
+    /// The caller guarantees that `mds` holds exactly `width * width` elements
+    /// and `ark` exactly `width * (full_rounds + partial_rounds)`. Passing
+    /// shorter slices does not invoke undefined behaviour -- hashing returns
+    /// [`PoseidonError::InvalidParameterDimensions`] rather than computing with
+    /// missing terms -- but the error surfaces at hash time instead of here.
+    /// Prefer [`PoseidonParameters::new`] for parameters from any other source.
+    pub fn new_unchecked(
+        ark: &'static [F],
+        mds: &'static [F],
         full_rounds: usize,
         partial_rounds: usize,
         width: usize,
@@ -201,6 +237,57 @@ impl<F: PrimeField> PoseidonParameters<F> {
             width,
             alpha,
         }
+    }
+
+    /// Builds a parameter set, validating that the dimensions are consistent.
+    ///
+    /// Returns [`PoseidonError::InvalidParameterDimensions`] unless `mds` holds
+    /// exactly `width * width` elements and `ark` exactly
+    /// `width * (full_rounds + partial_rounds)`. Without this check a truncated
+    /// matrix would silently hash with missing terms rather than being rejected.
+    pub fn new(
+        ark: &'static [F],
+        mds: &'static [F],
+        full_rounds: usize,
+        partial_rounds: usize,
+        width: usize,
+        alpha: u64,
+    ) -> Result<Self, PoseidonError> {
+        let expected_mds = width
+            .checked_mul(width)
+            .ok_or(PoseidonError::InvalidParameterDimensions {
+                expected_ark: 0,
+                actual_ark: ark.len(),
+                expected_mds: 0,
+                actual_mds: mds.len(),
+            })?;
+        let expected_ark = full_rounds
+            .checked_add(partial_rounds)
+            .and_then(|rounds| rounds.checked_mul(width))
+            .ok_or(PoseidonError::InvalidParameterDimensions {
+                expected_ark: 0,
+                actual_ark: ark.len(),
+                expected_mds,
+                actual_mds: mds.len(),
+            })?;
+
+        if mds.len() != expected_mds || ark.len() != expected_ark {
+            return Err(PoseidonError::InvalidParameterDimensions {
+                expected_ark,
+                actual_ark: ark.len(),
+                expected_mds,
+                actual_mds: mds.len(),
+            });
+        }
+
+        Ok(Self {
+            ark,
+            mds,
+            full_rounds,
+            partial_rounds,
+            width,
+            alpha,
+        })
     }
 }
 
@@ -309,36 +396,39 @@ pub trait PoseidonBytesHasher {
 }
 
 /// A stateful sponge performing Poseidon hash computation.
+///
+/// The permutation state lives on the stack for the duration of a hash, so a
+/// hasher holds only its parameters and domain tag, and hashing performs no
+/// heap allocation.
+#[derive(Clone, Copy, Debug)]
 pub struct Poseidon<F: PrimeField> {
     params: PoseidonParameters<F>,
     domain_tag: F,
-    state: Vec<F>,
 }
 
 impl<F: PrimeField> Poseidon<F> {
-    /// Returns a new Poseidon hasher based on the given parameters.
+    /// Returns a new Poseidon hasher based on the given parameters, with a zero
+    /// domain tag.
     ///
-    /// Optionally, a domain tag can be provided. If it is not provided, it
-    /// will be set to zero.
-    pub fn new(params: PoseidonParameters<F>) -> Self {
+    /// Returns [`PoseidonError::InvalidWidth`] for a width outside
+    /// `2..=MAX_X5_LEN`. That bound is what lets the permutation keep its state
+    /// in a fixed-size stack array; rejecting here means no later operation can
+    /// overrun it.
+    pub fn new(params: PoseidonParameters<F>) -> Result<Self, PoseidonError> {
         Self::with_domain_tag(params, F::zero())
     }
 
-    fn with_domain_tag(params: PoseidonParameters<F>, domain_tag: F) -> Self {
-        let width = params.width;
-        Self {
-            domain_tag,
-            params,
-            state: Vec::with_capacity(width),
+    fn with_domain_tag(
+        params: PoseidonParameters<F>,
+        domain_tag: F,
+    ) -> Result<Self, PoseidonError> {
+        if params.width < 2 || params.width > MAX_X5_LEN {
+            return Err(PoseidonError::InvalidWidth {
+                width: params.width,
+                max_limit: MAX_X5_LEN,
+            });
         }
-    }
-
-    #[inline(always)]
-    fn apply_ark(&mut self, round: usize) {
-        self.state.iter_mut().enumerate().for_each(|(i, a)| {
-            let c = self.params.ark[round * self.params.width + i];
-            *a += c;
-        });
+        Ok(Self { domain_tag, params })
     }
 
     /// Raises `a` to the S-box exponent. `Field::pow` is a generic binary
@@ -357,105 +447,195 @@ impl<F: PrimeField> Poseidon<F> {
         }
     }
 
+    /// Seeds `state` with the domain tag, leaving `state[1..]` for the caller
+    /// to fill with inputs.
+    ///
+    /// Returns the live slice, whose length is exactly `width`.
     #[inline(always)]
-    fn apply_sbox_full(&mut self) {
-        let alpha = self.params.alpha;
-        self.state.iter_mut().for_each(|a| {
-            *a = Self::sbox(*a, alpha);
-        });
+    fn init_state<'a>(&self, state: &'a mut [F; MAX_X5_LEN]) -> Result<&'a mut [F], PoseidonError> {
+        let width = self.params.width;
+        let live = state
+            .get_mut(..width)
+            .ok_or(PoseidonError::InvalidWidth {
+                width,
+                max_limit: MAX_X5_LEN,
+            })?;
+        if let Some(first) = live.first_mut() {
+            *first = self.domain_tag;
+        }
+        Ok(live)
     }
 
+    /// Checks that the caller supplied exactly `width - 1` inputs.
     #[inline(always)]
-    fn apply_sbox_partial(&mut self) {
-        self.state[0] = Self::sbox(self.state[0], self.params.alpha);
+    fn check_input_count(&self, inputs: usize) -> Result<(), PoseidonError> {
+        // `width >= 2` is guaranteed by the constructor, so this cannot wrap.
+        let max_limit = self.params.width - 1;
+        if inputs != max_limit {
+            return Err(PoseidonError::InvalidNumberOfInputs {
+                inputs,
+                max_limit,
+                width: self.params.width,
+            });
+        }
+        Ok(())
     }
 
-    #[inline(always)]
-    fn apply_mds(&mut self) {
-        self.state = self
-            .state
-            .iter()
-            .enumerate()
-            .map(|(i, _)| {
-                self.state
+    /// Applies the full Poseidon permutation to `state` and returns lane zero.
+    ///
+    /// `state` must hold exactly `width` elements. All scratch space is on the
+    /// stack, so this allocates nothing regardless of width.
+    fn permute(&self, state: &mut [F]) -> Result<F, PoseidonError> {
+        let PoseidonParameters {
+            ark,
+            mds,
+            full_rounds,
+            partial_rounds,
+            width,
+            alpha,
+        } = self.params;
+
+        // The constructor and `PoseidonParameters` validation make these
+        // unreachable; they exist so no path can panic on malformed input.
+        let dimension_error = || PoseidonError::InvalidParameterDimensions {
+            expected_ark: width.saturating_mul(full_rounds.saturating_add(partial_rounds)),
+            actual_ark: ark.len(),
+            expected_mds: width.saturating_mul(width),
+            actual_mds: mds.len(),
+        };
+
+        if state.len() != width {
+            return Err(dimension_error());
+        }
+
+        let mut scratch = [F::zero(); MAX_X5_LEN];
+        let mut round_constants = ark.chunks_exact(width);
+        let half_rounds = full_rounds / 2;
+        let all_rounds = full_rounds.saturating_add(partial_rounds);
+
+        for round in 0..all_rounds {
+            let constants = round_constants.next().ok_or_else(dimension_error)?;
+            for (lane, constant) in state.iter_mut().zip(constants) {
+                *lane += *constant;
+            }
+
+            // Full rounds bracket the partial rounds on both sides.
+            if round < half_rounds || round >= half_rounds + partial_rounds {
+                for lane in state.iter_mut() {
+                    *lane = Self::sbox(*lane, alpha);
+                }
+            } else if let Some(first) = state.first_mut() {
+                *first = Self::sbox(*first, alpha);
+            }
+
+            let next = scratch.get_mut(..width).ok_or_else(dimension_error)?;
+            for (i, out) in next.iter_mut().enumerate() {
+                let start = i.saturating_mul(width);
+                let row = mds
+                    .get(start..start.saturating_add(width))
+                    .ok_or_else(dimension_error)?;
+                *out = state
                     .iter()
-                    .enumerate()
-                    .fold(F::zero(), |acc, (j, a)| acc + *a * self.params.mds[i][j])
-            })
-            .collect();
+                    .zip(row)
+                    .fold(F::zero(), |acc, (lane, m)| acc + *lane * *m);
+            }
+            state.copy_from_slice(next);
+        }
+
+        state.first().copied().ok_or_else(dimension_error)
     }
 }
 
 impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
     fn hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError> {
-        if inputs.len() != self.params.width - 1 {
-            return Err(PoseidonError::InvalidNumberOfInputs {
-                inputs: inputs.len(),
-                max_limit: self.params.width - 1,
-                width: self.params.width,
-            });
+        self.check_input_count(inputs.len())?;
+
+        let mut state = [F::zero(); MAX_X5_LEN];
+        let live = self.init_state(&mut state)?;
+        for (lane, input) in live.iter_mut().skip(1).zip(inputs) {
+            *lane = *input;
         }
 
-        self.state.push(self.domain_tag);
-
-        for input in inputs {
-            self.state.push(*input);
-        }
-
-        let all_rounds = self.params.full_rounds + self.params.partial_rounds;
-        let half_rounds = self.params.full_rounds / 2;
-
-        // full rounds + partial rounds
-        for round in 0..half_rounds {
-            self.apply_ark(round);
-            self.apply_sbox_full();
-            self.apply_mds();
-        }
-
-        for round in half_rounds..half_rounds + self.params.partial_rounds {
-            self.apply_ark(round);
-            self.apply_sbox_partial();
-            self.apply_mds();
-        }
-
-        for round in half_rounds + self.params.partial_rounds..all_rounds {
-            self.apply_ark(round);
-            self.apply_sbox_full();
-            self.apply_mds();
-        }
-
-        let result = self.state[0];
-        self.state.clear();
-        Ok(result)
+        self.permute(live)
     }
+}
+
+/// Writes a canonical integer into a fixed-size byte array, most significant
+/// limb first, without allocating.
+fn bigint_to_hash_bytes_be<F: PrimeField>(
+    value: F::BigInt,
+) -> Result<[u8; HASH_LEN], PoseidonError> {
+    let limbs: &[u64] = value.as_ref();
+    if limbs.len().saturating_mul(8) != HASH_LEN {
+        return Err(PoseidonError::VecToArray);
+    }
+    let mut out = [0u8; HASH_LEN];
+    for (chunk, limb) in out.chunks_exact_mut(8).zip(limbs.iter().rev()) {
+        chunk.copy_from_slice(&limb.to_be_bytes());
+    }
+    Ok(out)
+}
+
+/// Writes a canonical integer into a fixed-size byte array, least significant
+/// limb first, without allocating.
+fn bigint_to_hash_bytes_le<F: PrimeField>(
+    value: F::BigInt,
+) -> Result<[u8; HASH_LEN], PoseidonError> {
+    let limbs: &[u64] = value.as_ref();
+    if limbs.len().saturating_mul(8) != HASH_LEN {
+        return Err(PoseidonError::VecToArray);
+    }
+    let mut out = [0u8; HASH_LEN];
+    for (chunk, limb) in out.chunks_exact_mut(8).zip(limbs.iter()) {
+        chunk.copy_from_slice(&limb.to_le_bytes());
+    }
+    Ok(out)
 }
 
 macro_rules! impl_hash_bytes {
     ($fn_name:ident, $bytes_to_prime_field_element_fn:ident, $to_bytes_fn:ident) => {
         fn $fn_name(&mut self, inputs: &[&[u8]]) -> Result<[u8; HASH_LEN], PoseidonError> {
-            let inputs: Result<Vec<_>, _> = inputs
-                .iter()
-                .map(|input| validate_bytes_length::<F>(input))
-                .collect();
-            let inputs = inputs?;
-            let inputs: Result<Vec<_>, _> = inputs
-                .iter()
-                .map(|input| $bytes_to_prime_field_element_fn(input))
-                .collect();
-            let inputs = inputs?;
-            let hash = self.hash(&inputs)?;
+            // Error precedence is load-bearing and matches the historical
+            // behaviour: every length is validated first, then every value is
+            // converted, and only then is the input count checked.
+            for input in inputs {
+                validate_bytes_length::<F>(input)?;
+            }
 
-            hash.into_bigint()
-                .$to_bytes_fn()
-                .try_into()
-                .map_err(|_| PoseidonError::VecToArray)
+            // Inputs are converted straight into the permutation state, so
+            // there is no intermediate buffer to size or overflow. Excess
+            // inputs are still converted, so a conversion error in one of them
+            // surfaces ahead of the count error, as it did before.
+            let mut state = [F::zero(); MAX_X5_LEN];
+            let live = self.init_state(&mut state)?;
+            {
+                let mut lanes = live.iter_mut().skip(1);
+                for input in inputs {
+                    let value = $bytes_to_prime_field_element_fn(input)?;
+                    if let Some(lane) = lanes.next() {
+                        *lane = value;
+                    }
+                }
+            }
+            self.check_input_count(inputs.len())?;
+
+            let hash = self.permute(live)?;
+            $to_bytes_fn::<F>(hash.into_bigint())
         }
     };
 }
 
 impl<F: PrimeField> PoseidonBytesHasher for Poseidon<F> {
-    impl_hash_bytes!(hash_bytes_le, bytes_to_prime_field_element_le, to_bytes_le);
-    impl_hash_bytes!(hash_bytes_be, bytes_to_prime_field_element_be, to_bytes_be);
+    impl_hash_bytes!(
+        hash_bytes_le,
+        bytes_to_prime_field_element_le,
+        bigint_to_hash_bytes_le
+    );
+    impl_hash_bytes!(
+        hash_bytes_be,
+        bytes_to_prime_field_element_be,
+        bigint_to_hash_bytes_be
+    );
 }
 
 /// Checks whether a slice of bytes is not empty or its length does not exceed
@@ -486,33 +666,80 @@ where
 }
 
 macro_rules! impl_bytes_to_prime_field_element {
-    ($name:ident, $from_bytes_method:ident, $endianess:expr) => {
+    ($name:ident, $endianess:expr, $is_be:expr) => {
         #[doc = "Converts a slice of "]
         #[doc = $endianess]
         #[doc = "-endian bytes into a prime field element, \
                  represented by the [`ark_ff::PrimeField`](ark_ff::PrimeField) trait."]
+        ///
+        /// The value is assembled directly into the field's limb array, which is
+        /// a fixed-size stack type, so no heap allocation takes place.
         pub fn $name<F>(input: &[u8]) -> Result<F, PoseidonError>
         where
             F: PrimeField,
         {
-            let element = num_bigint::BigUint::$from_bytes_method(input);
-            let element = F::BigInt::try_from(element).map_err(|_| PoseidonError::BytesToBigInt)?;
+            // Zero padding at the most significant end is accepted, matching the
+            // previous `BigUint`-based behaviour.
+            let trimmed = if $is_be {
+                let start = input.iter().position(|byte| *byte != 0).unwrap_or(input.len());
+                input.get(start..).ok_or(PoseidonError::BytesToBigInt)?
+            } else {
+                let end = input
+                    .iter()
+                    .rposition(|byte| *byte != 0)
+                    .map(|i| i + 1)
+                    .unwrap_or(0);
+                input.get(..end).ok_or(PoseidonError::BytesToBigInt)?
+            };
 
-            // In theory, `F::from_bigint` should also perform a check whether input is
-            // larger than modulus (and return `None` if it is), but it's not reliable...
-            // To be sure, we check it ourselves.
-            if element >= F::MODULUS {
+            let mut repr = F::BigInt::default();
+            {
+                let limbs: &mut [u64] = repr.as_mut();
+                let mut remaining = trimmed;
+                for limb in limbs.iter_mut() {
+                    if remaining.is_empty() {
+                        break;
+                    }
+                    let take = remaining.len().min(8);
+                    let mut bytes = [0u8; 8];
+                    if $is_be {
+                        // The least significant group sits at the end.
+                        let (head, tail) = remaining.split_at(remaining.len() - take);
+                        bytes
+                            .get_mut(8 - take..)
+                            .ok_or(PoseidonError::BytesToBigInt)?
+                            .copy_from_slice(tail);
+                        *limb = u64::from_be_bytes(bytes);
+                        remaining = head;
+                    } else {
+                        let (head, tail) = remaining.split_at(take);
+                        bytes
+                            .get_mut(..take)
+                            .ok_or(PoseidonError::BytesToBigInt)?
+                            .copy_from_slice(head);
+                        *limb = u64::from_le_bytes(bytes);
+                        remaining = tail;
+                    }
+                }
+                // Anything left over does not fit in the field's limb array.
+                if !remaining.is_empty() {
+                    return Err(PoseidonError::BytesToBigInt);
+                }
+            }
+
+            // `F::from_bigint` is documented to reject values at or above the
+            // modulus, but this crate has been bitten by relying on that before
+            // (commit 9746e79, "this time for real"), so the check stays explicit.
+            if repr >= F::MODULUS {
                 return Err(PoseidonError::InputLargerThanModulus);
             }
-            let element = F::from_bigint(element).ok_or(PoseidonError::InputLargerThanModulus)?;
-
-            Ok(element)
+            F::from_bigint(repr).ok_or(PoseidonError::InputLargerThanModulus)
         }
     };
 }
 
-impl_bytes_to_prime_field_element!(bytes_to_prime_field_element_le, from_bytes_le, "little");
-impl_bytes_to_prime_field_element!(bytes_to_prime_field_element_be, from_bytes_be, "big");
+impl_bytes_to_prime_field_element!(bytes_to_prime_field_element_le, "little", false);
+impl_bytes_to_prime_field_element!(bytes_to_prime_field_element_be, "big", true);
 
 impl<F: PrimeField> Poseidon<F> {
     pub fn new_circom(nr_inputs: usize) -> Result<Poseidon<Fr>, PoseidonError> {
@@ -531,9 +758,9 @@ impl<F: PrimeField> Poseidon<F> {
             });
         }
 
-        let params = crate::parameters::bn254_x5::get_poseidon_parameters::<Fr>(
+        let params = crate::parameters::bn254_x5::get_poseidon_parameters(
             (width).try_into().map_err(|_| PoseidonError::U64Tou8)?,
         )?;
-        Ok(Poseidon::<Fr>::with_domain_tag(params, domain_tag))
+        Poseidon::<Fr>::with_domain_tag(params, domain_tag)
     }
 }

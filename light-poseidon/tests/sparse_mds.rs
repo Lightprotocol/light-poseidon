@@ -200,12 +200,7 @@ fn empty_sparse_parameters_are_rejected() {
     let params = bn254_x5::get_poseidon_parameters(3).unwrap();
     // `lambda_end` is never read for empty parameters: `fits` rejects them
     // before the permutation runs. Any reference satisfies the signature.
-    let empty: SparseMdsParameters<Fr> = SparseMdsParameters::new_unchecked(
-        &[],
-        &[],
-        &[],
-        &[],
-        &bn254_x5_sparse::LAMBDA_END_3,
-    );
+    let empty: SparseMdsParameters<Fr> =
+        SparseMdsParameters::new_unchecked(&[], &[], &[], &[], &bn254_x5_sparse::LAMBDA_END_3);
     assert!(params.with_sparse_mds(empty).is_err());
 }
